@@ -1,0 +1,75 @@
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: cemaden_rj
+      POSTGRES_USER: cemaden_rj
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-troque-esta-senha}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cemaden_rj"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    env_file: ./backend/.env
+    environment:
+      DATABASE_URL: postgres://cemaden_rj:${POSTGRES_PASSWORD:-troque-esta-senha}@postgres:5432/cemaden_rj
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: >
+      sh -c "python manage.py migrate --noinput &&
+             gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3"
+    ports:
+      - "8000:8000"
+    volumes:
+      - static_data:/app/staticfiles
+
+  celery_worker:
+    build: ./backend
+    restart: unless-stopped
+    env_file: ./backend/.env
+    environment:
+      DATABASE_URL: postgres://cemaden_rj:${POSTGRES_PASSWORD:-troque-esta-senha}@postgres:5432/cemaden_rj
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      - backend
+      - redis
+    command: celery -A config worker --loglevel=info
+
+  celery_beat:
+    build: ./backend
+    restart: unless-stopped
+    env_file: ./backend/.env
+    environment:
+      DATABASE_URL: postgres://cemaden_rj:${POSTGRES_PASSWORD:-troque-esta-senha}@postgres:5432/cemaden_rj
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      - backend
+      - redis
+    command: celery -A config beat --loglevel=info
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000/api}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+  static_data:
