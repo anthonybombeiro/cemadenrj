@@ -42,6 +42,25 @@ quem for negociar acessos institucionais.
   contornar automaticamente — o conector detecta, ignora essa estação
   naquela rodada e segue para as demais sem travar; não chegamos a
   investigar a causa raiz no site do INMET.
+- **Como isso roda em produção no HostGator, que não tem Chrome:** testamos
+  se a validação anti-robô do endpoint (`POST
+  https://apitempo.inmet.gov.br/estacao/front/`, campo `gcap`) é só
+  decorativa — não é. Mandamos o campo vazio/forjado e o servidor recusou
+  (`{"error":"Algo deu errado!!"}`), confirmando que é validado de verdade.
+  Não tentamos forjar um token válido (seria contornar a proteção
+  anti-robô do site, fora do que topamos fazer). A solução: o scraping
+  roda de graça no **GitHub Actions** (repositório público =
+  minutos ilimitados), que tem Chrome disponível, a cada 15 min
+  (`.github/workflows/scrape-inmet.yml` +
+  `backend/scripts/scrape_inmet_and_push.py`), e envia o resultado via
+  HTTP para o endpoint `POST /api/ingest/readings/` do backend no
+  HostGator (protegido por segredo compartilhado, ver
+  `INGEST_SHARED_SECRET` em `backend/.env.example`). Testado localmente
+  ponta a ponta (script → endpoint → aparece em `/api/stations/`).
+  Configuração necessária no GitHub (Settings → Secrets and variables →
+  Actions) do repositório: `INGEST_URL` (ex:
+  `https://cemaden.preservess.com.br/api/ingest/readings/`) e
+  `INGEST_SHARED_SECRET` (mesmo valor do `.env` do backend em produção).
 
 ## CEMADEN Nacional — documentado, não testável a partir deste ambiente
 

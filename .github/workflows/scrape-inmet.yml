@@ -1,0 +1,33 @@
+name: Raspar INMET e enviar para o backend
+
+# Roda um Chrome de verdade (grátis em runner de repositório público) para
+# ler a tabela pública do INMET, já que o HostGator (hospedagem
+# compartilhada, sem root) não consegue instalar Chrome. Ver
+# backend/docs/fontes-de-dados.md para o contexto completo.
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar Chrome
+        uses: browser-actions/setup-chrome@v1
+
+      - name: Instalar dependências
+        run: pip install requests selenium pandas lxml
+
+      - name: Rodar scraper e enviar leituras
+        env:
+          INGEST_URL: ${{ secrets.INGEST_URL }}
+          INGEST_SHARED_SECRET: ${{ secrets.INGEST_SHARED_SECRET }}
+        run: python backend/scripts/scrape_inmet_and_push.py

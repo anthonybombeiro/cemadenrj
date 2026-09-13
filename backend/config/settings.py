@@ -113,6 +113,13 @@ CELERY_BROKER_URL = REDIS_URL
 CELERY_RESULT_BACKEND = REDIS_URL
 CELERY_TIMEZONE = TIME_ZONE
 
+# Segredo compartilhado para o endpoint /api/ingest/readings/ — usado pelo
+# worker do GitHub Actions (.github/workflows/scrape-inmet.yml) para enviar
+# leituras raspadas com um Chrome real, já que o HostGator não tem Chrome.
+# Gere um valor aleatório longo (ex: `openssl rand -hex 32`) e configure o
+# MESMO valor aqui e no secret INGEST_SHARED_SECRET do repositório GitHub.
+INGEST_SHARED_SECRET = os.environ.get("INGEST_SHARED_SECRET", "")
+
 INMET_API_TOKEN = os.environ.get("INMET_API_TOKEN", "")
 
 # Solução temporária enquanto não há token da API: faz scraping da tabela
