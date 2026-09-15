@@ -114,8 +114,11 @@ Sistemas, v2.0, 2015), obtido em
 
 - API pública, sem autenticação, código-fonte aberto:
   https://github.com/prefeitura-rio/api-dados-rio (GPLv3, mantida pelo
-  Escritório de Dados, escritoriodedados@gmail.com — repo com commit do
-  dia anterior ao teste, não parece abandonado).
+  Escritório de Dados, escritoriodedados@gmail.com).
+  **Correção (16/09/2026):** o campo `pushed_at` do repositório mostrava
+  data recente, mas o commit de verdade mais recente é de 04/03/2024 (a
+  atividade "recente" era só um bot de pre-commit, não desenvolvimento).
+  Serviço provavelmente descontinuado/abandonado, não instável.
 - Achado navegando o catálogo oficial do data.rio (busca por "pluviômetro"
   retornou o dataset "Estações Alerta Rio" que já usávamos + um dataset de
   "Zonas Pluviométricas"), depois cruzando com uma busca no GitHub da
@@ -125,13 +128,17 @@ Sistemas, v2.0, 2015), obtido em
   precipitacao_15min/` — chuva dos últimos 15 min por hexágono H3
   (só cobre o município do Rio, não o estado inteiro). Outras janelas
   (30min/1h/3h/6h/12h/24h/96h) existem na mesma API, não usadas ainda.
-- **Status em 15/09/2026: serviço fora do ar (HTTP 503) durante todo o
-  desenvolvimento e teste do conector.** Não conseguimos validar com dados
-  reais ainda — o conector foi escrito com base no formato de resposta
-  documentado no próprio código-fonte do repositório. Testar de novo
-  quando o serviço voltar (`python manage.py ingest rio_chuva_bairro`);
-  se continuar fora do ar por muito tempo, usar o e-mail de contato do
-  Escritório de Dados acima.
+- **Status: serviço fora do ar (HTTP 503) em 15/09/2026 e de novo em
+  16/09/2026** — não só o endpoint de chuva, mas também `/healthcheck/` e a
+  raiz do domínio. Combinado com a descoberta acima (sem desenvolvimento
+  real desde 2024), a leitura mais honesta é que este serviço está
+  **provavelmente abandonado/descontinuado**, não apenas instável. O
+  conector (`rio_chuva_bairro.py`) fica no projeto porque não custa nada
+  mantê-lo (trata erro corretamente, não derruba a ingestão) — mas não
+  há garantia de que volte a funcionar. Se for importante ter esse dado,
+  o caminho é contatar o Escritório de Dados diretamente
+  (escritoriodedados@gmail.com) para confirmar se a API foi descontinuada
+  e se existe substituta.
 
 ## Weather Underground (PWS) — confirmado e funcionando, com ressalva de método
 
