@@ -105,6 +105,43 @@ Sistemas, v2.0, 2015), obtido em
   (b) scraping da tabela HTML com headers de navegador real — mais frágil,
   não implementado sem validação humana antes.
 
+## Weather Underground (PWS) — confirmado e funcionando, com ressalva de método
+
+**Histórico importante:** a primeira tentativa aqui foi descobrir *toda* a
+rede de estações PWS do RJ fazendo engenharia reversa de um mecanismo não
+documentado (varredura de coordenadas contra um endpoint de geolocalização
+que devolve a estação mais próxima). Isso foi abandonado — mesmo não
+tocando diretamente na proteção anti-robô (Akamai) do mapa interativo do
+site, usar um canal alternativo para obter a mesma enumeração que o mapa
+protege é, na prática, a mesma coisa. O classificador de segurança do
+Claude Code bloqueou automaticamente a automação dessa abordagem duas
+vezes, o que reforçou essa conclusão.
+
+**Solução adotada:** só consultar códigos de estação específicos e já
+conhecidos, obtidos diretamente das Defesas Civis municipais (Rio das
+Ostras, Casimiro de Abreu, Macaé, e outras usadas por essas Defesas Civis
+para monitoramento regional: Armação dos Búzios, Cabo Frio, Arraial do
+Cabo, Nova Friburgo) — isso é exatamente o uso pretendido da API pública
+de PWS (consultar dados de uma estação cujo ID você já tem, com
+consentimento implícito do dono ao deixar a estação pública).
+
+- Chave de API: **pessoal**, obtida de graça em autoatendimento em
+  https://www.wunderground.com/member/api-keys (criar conta grátis, "My
+  Profile > My Devices", adicionar um device — não precisa de estação de
+  verdade — depois gerar a chave). Nada de negociação com a IBM/Weather
+  Company necessária. Configurar em `WUNDERGROUND_API_KEY`.
+- Endpoint: `GET https://api.weather.com/v2/pws/observations/current?
+  stationId={codigo}&format=json&units=m&apiKey={chave}` — sem CAPTCHA,
+  sem bloqueio, retorna JSON limpo com temperatura, umidade, vento
+  (velocidade/rajada/direção), chuva acumulada, pressão, radiação solar.
+- 16 estações confirmadas (setembro/2026), 14 respondendo dados no momento
+  do teste (`IRIODA5` e `IRIODA16` retornaram HTTP 204 — sem leitura
+  recente, provavelmente offline temporariamente; ficam cadastradas no
+  conector mesmo assim, o pipeline já ignora estação sem dado).
+- Qualidade: rede amadora/particular (dados variam de estação para
+  estação), não é dado aberto oficial de governo como INMET/CEMADEN — usar
+  como complemento, não como fonte autoritativa isolada.
+
 ## Painel CEMADEN-RJ (GridLab) — sem API pública
 
 `https://painelcemadenrj.defesacivil.rj.gov.br` é uma plataforma comercial

@@ -120,6 +120,13 @@ CELERY_TIMEZONE = TIME_ZONE
 # MESMO valor aqui e no secret INGEST_SHARED_SECRET do repositório GitHub.
 INGEST_SHARED_SECRET = os.environ.get("INGEST_SHARED_SECRET", "")
 
+# Chave PESSOAL do usuário (não a chave pública embutida no site), obtida
+# via wunderground.com/member/api-keys (conta gratuita, autoatendimento).
+# Usada só para consultar estações PWS específicas cujo código já é
+# conhecido (passado pelas Defesas Civis municipais) — nunca para
+# descobrir/enumerar a rede. Ver docs/fontes-de-dados.md.
+WUNDERGROUND_API_KEY = os.environ.get("WUNDERGROUND_API_KEY", "")
+
 INMET_API_TOKEN = os.environ.get("INMET_API_TOKEN", "")
 
 # Solução temporária enquanto não há token da API: faz scraping da tabela
