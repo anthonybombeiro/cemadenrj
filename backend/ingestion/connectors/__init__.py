@@ -2,6 +2,7 @@ from .alerta_rio import AlertaRioConnector
 from .base import BaseConnector, IngestResult
 from .cemaden_nacional import CemadenNacionalConnector
 from .inmet import InmetConnector
+from .rio_chuva_bairro import RioChuvaBairroConnector
 from .wunderground import WundergroundConnector
 
 REGISTRY: dict[str, type[BaseConnector]] = {
@@ -9,6 +10,7 @@ REGISTRY: dict[str, type[BaseConnector]] = {
     CemadenNacionalConnector.slug: CemadenNacionalConnector,
     AlertaRioConnector.slug: AlertaRioConnector,
     WundergroundConnector.slug: WundergroundConnector,
+    RioChuvaBairroConnector.slug: RioChuvaBairroConnector,
 }
 
 

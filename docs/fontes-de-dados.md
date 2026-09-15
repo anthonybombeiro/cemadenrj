@@ -104,6 +104,34 @@ Sistemas, v2.0, 2015), obtido em
   em andamento para o painel GridLab cobre isso, já que GeoRio opera os dois;
   (b) scraping da tabela HTML com headers de navegador real — mais frágil,
   não implementado sem validação humana antes.
+- **Resolvido de outra forma (15/09/2026):** achamos uma API pública e
+  oficial da Prefeitura do Rio — **Escritório de Dados / COR** — que agrega
+  os dados da mesma rede Alerta Rio/CEMADEN por bairro (hexágono H3), sem
+  precisar tocar na página protegida. Ver conector `rio_chuva_bairro.py` e
+  seção própria abaixo.
+
+## Chuva por Bairro (Escritório de Dados Rio / COR) — confirmado, serviço instável
+
+- API pública, sem autenticação, código-fonte aberto:
+  https://github.com/prefeitura-rio/api-dados-rio (GPLv3, mantida pelo
+  Escritório de Dados, escritoriodedados@gmail.com — repo com commit do
+  dia anterior ao teste, não parece abandonado).
+- Achado navegando o catálogo oficial do data.rio (busca por "pluviômetro"
+  retornou o dataset "Estações Alerta Rio" que já usávamos + um dataset de
+  "Zonas Pluviométricas"), depois cruzando com uma busca no GitHub da
+  Prefeitura do Rio (`prefeitura-rio/api-dados-rio`) — sem nenhuma
+  engenharia reversa de proteção nenhuma, tudo documentado publicamente.
+- Endpoint usado: `GET https://api.dados.rio/v2/clima_pluviometro/
+  precipitacao_15min/` — chuva dos últimos 15 min por hexágono H3
+  (só cobre o município do Rio, não o estado inteiro). Outras janelas
+  (30min/1h/3h/6h/12h/24h/96h) existem na mesma API, não usadas ainda.
+- **Status em 15/09/2026: serviço fora do ar (HTTP 503) durante todo o
+  desenvolvimento e teste do conector.** Não conseguimos validar com dados
+  reais ainda — o conector foi escrito com base no formato de resposta
+  documentado no próprio código-fonte do repositório. Testar de novo
+  quando o serviço voltar (`python manage.py ingest rio_chuva_bairro`);
+  se continuar fora do ar por muito tempo, usar o e-mail de contato do
+  Escritório de Dados acima.
 
 ## Weather Underground (PWS) — confirmado e funcionando, com ressalva de método
 

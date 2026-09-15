@@ -61,7 +61,8 @@ export default function HomePage() {
         <div>
           <h1 className="text-lg font-bold text-gray-900">Painel Meteorológico/Hidrológico — CEMADEN-RJ</h1>
           <p className="text-xs text-gray-500">
-            Agregação de estações públicas (INMET, CEMADEN nacional, Alerta Rio/GeoRio, Wunderground) para apoio à
+            Agregação de estações públicas (INMET, CEMADEN nacional, Alerta Rio/GeoRio, Wunderground, COR/Escritório
+            de Dados Rio) para apoio à
             decisão. <strong>Não substitui os canais oficiais de emissão de alerta da Defesa Civil.</strong>
           </p>
         </div>
