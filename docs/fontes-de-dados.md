@@ -18,6 +18,21 @@ quem for negociar acessos institucionais.
   Sem token válido, retorna `"CHAVE INVÁLIDA!"`. Não existe cadastro de
   autoatendimento para esse token — pedido enviado por e-mail ao INMET/
   COPREM (ver `docs/email-inmet-rascunho.md`), resposta pendente.
+  **Confirmado independentemente (16/09/2026):** o painel COR-RIO
+  `github.com/COR-RIO/dados-rio-chuvas` bateu na mesma parede (mesmo texto
+  de erro, mesma rota morta) e documenta a mesma solução (contatar o SAC
+  do INMET) — não é limitação nossa, é a situação real da API.
+- **Alternativa sem token, pendente de decisão do usuário:** tabela
+  BigQuery oficial `datario.meio_ambiente_clima.meteorologia_inmet`
+  (mantida por basedosdados/Prefeitura do Rio, achada via
+  `https://www.data.rio/documents/f14b1ed52be447379383acbb96353e1c`) —
+  dados horários (chuva 1h, vento, temperatura, pressão, umidade,
+  radiação) **desde 2010**, atualização diária (não é tempo real, mas não
+  precisa de token do INMET nem de Chrome). Exige o usuário criar um
+  projeto Google Cloud gratuito (sandbox, sem cartão) e nos passar o ID —
+  mesma exigência da tabela de chuva por bairro do Alerta Rio (ver acima),
+  então configurar uma vez destrava as duas. Usuário optou por aguardar a
+  resposta do e-mail ao INMET antes de investir nisso (16/09/2026).
 - **Solução temporária em produção (implementada):** enquanto o token não
   chega, `InmetConnector` usa a técnica que o usuário já tinha em produção
   para consultar vento — Selenium com Chrome real renderizando
