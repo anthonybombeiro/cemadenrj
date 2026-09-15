@@ -58,6 +58,8 @@ export const READING_TYPE_LABELS: Record<string, string> = {
   temperatura_c: "Temperatura (°C)",
   umidade_pct: "Umidade relativa (%)",
   vento_ms: "Vento (m/s)",
+  vento_rajada_ms: "Rajada de vento (m/s)",
+  vento_dir_graus: "Direção do vento (°)",
   mare_m: "Maré (m)",
 };
 

@@ -57,7 +57,8 @@ export default function MapView({ stations }: { stations: Station[] }) {
                       <span className="font-medium">
                         {READING_TYPE_LABELS[r.reading_type] ?? r.reading_type}:
                       </span>{" "}
-                      {r.value} <span className="text-gray-400">({formatTimestamp(r.timestamp)})</span>
+                      {Math.round(r.value * 100) / 100}{" "}
+                      <span className="text-gray-400">({formatTimestamp(r.timestamp)})</span>
                     </li>
                   ))}
                 </ul>

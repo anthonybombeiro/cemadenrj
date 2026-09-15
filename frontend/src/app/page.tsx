@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
 
+import DataTable from "@/components/DataTable";
 import { fetchStations, STATION_TYPE_LABELS, Station } from "@/lib/api";
 
 const MapView = dynamic(() => import("@/components/MapView"), {
@@ -12,12 +13,15 @@ const MapView = dynamic(() => import("@/components/MapView"), {
   ),
 });
 
+type ViewMode = "mapa" | "tabela";
+
 export default function HomePage() {
   const [stations, setStations] = useState<Station[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [municipalityFilter, setMunicipalityFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
+  const [viewMode, setViewMode] = useState<ViewMode>("mapa");
 
   useEffect(() => {
     let cancelled = false;
@@ -53,12 +57,34 @@ export default function HomePage() {
 
   return (
     <div className="flex h-screen flex-col">
-      <header className="border-b border-gray-200 bg-white px-4 py-3 shadow-sm">
-        <h1 className="text-lg font-bold text-gray-900">Painel Meteorológico/Hidrológico — CEMADEN-RJ</h1>
-        <p className="text-xs text-gray-500">
-          Agregação de estações públicas (INMET, CEMADEN nacional, Alerta Rio/GeoRio) para apoio à decisão.{" "}
-          <strong>Não substitui os canais oficiais de emissão de alerta da Defesa Civil.</strong>
-        </p>
+      <header className="flex flex-wrap items-start justify-between gap-3 border-b border-gray-200 bg-white px-4 py-3 shadow-sm">
+        <div>
+          <h1 className="text-lg font-bold text-gray-900">Painel Meteorológico/Hidrológico — CEMADEN-RJ</h1>
+          <p className="text-xs text-gray-500">
+            Agregação de estações públicas (INMET, CEMADEN nacional, Alerta Rio/GeoRio, Wunderground) para apoio à
+            decisão. <strong>Não substitui os canais oficiais de emissão de alerta da Defesa Civil.</strong>
+          </p>
+        </div>
+        <div className="flex shrink-0 overflow-hidden rounded border border-gray-300">
+          <button
+            type="button"
+            onClick={() => setViewMode("mapa")}
+            className={`px-3 py-1.5 text-sm font-medium ${
+              viewMode === "mapa" ? "bg-blue-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"
+            }`}
+          >
+            Mapa
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode("tabela")}
+            className={`border-l border-gray-300 px-3 py-1.5 text-sm font-medium ${
+              viewMode === "tabela" ? "bg-blue-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"
+            }`}
+          >
+            Tabela
+          </button>
+        </div>
       </header>
 
       <div className="flex flex-1 flex-col overflow-hidden md:flex-row">
@@ -105,8 +131,8 @@ export default function HomePage() {
           )}
         </aside>
 
-        <main className="relative flex-1">
-          <MapView stations={filteredStations} />
+        <main className="relative flex-1 overflow-hidden">
+          {viewMode === "mapa" ? <MapView stations={filteredStations} /> : <DataTable stations={filteredStations} />}
         </main>
       </div>
     </div>
