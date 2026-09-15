@@ -4,6 +4,30 @@ Levantamento feito em setembro/2026 durante a montagem deste projeto. Serve
 como referência para os conectores em `backend/ingestion/connectors/` e para
 quem for negociar acessos institucionais.
 
+## Plugfield — confirmado e funcionando (conta institucional CEMADEN-RJ)
+
+- API oficial documentada (Swagger): https://wdg.plugfield.com.br/doc-api/index.html
+  — atenção, o servidor real é outro host: `https://prod-api.plugfield.com.br`.
+- Login: `POST /login` com header `x-api-key` e corpo `{username, password}` →
+  `access_token` (JWT que não expira). Chamadas seguintes usam
+  `x-api-key` + `Authorization: <access_token>` (sem prefixo "Bearer").
+- Um único endpoint basta: `GET /device?page=1` já devolve, para cada
+  estação, metadados (nome, lat/lon, cidade) **e** a última leitura
+  embutida em `dashboard` (temperatura, umidade, chuva do dia, vento,
+  rajada, direção, ponto de orvalho, pressão, UV) — sem precisar de
+  chamada extra por estação.
+- **9 estações reais confirmadas** (setembro/2026): Cambuci (2), Areal,
+  Engenheiro Paulo de Frontin (3), Mendes, Cordeiro, Rio Claro — todas
+  claramente estações de Defesa Civil municipal.
+- **Histórico de segurança:** uma implementação anterior deste conector
+  (feita em outra sessão/branch) commitou usuário, senha e API key da
+  Plugfield em texto puro no código-fonte, publicado no GitHub. Foi
+  reescrito do zero aqui (credenciais só via `.env`, nunca no código) e o
+  branch comprometido foi apagado do GitHub — mas as credenciais antigas
+  já ficaram expostas publicamente por um tempo. **Recomendação: trocar a
+  senha da conta Plugfield e gerar uma nova API key.**
+- Limites documentados: 5.000 requisições/mês por estação, 5 req/s.
+
 ## INMET — confirmado e funcionando
 
 - Lista de estações automáticas (sem autenticação):
