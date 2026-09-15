@@ -89,28 +89,42 @@ Sistemas, v2.0, 2015), obtido em
   publicamente; o site usa OpenLayers 2.x + backend próprio, não investigado
   a fundo por ser mais demorado de fazer engenharia reversa).
 
-## Alerta Rio / GeoRio — parcialmente confirmado
+## Alerta Rio / GeoRio — RESOLVIDO (16/09/2026), com leituras reais em tempo real
 
 - Localização das 33 estações pluviométricas (sem autenticação):
   `GET https://www.data.rio/api/download/v1/items/88b61c6abe424c049fdf83d27917602e/geojson?layers=0`
   Retorna GeoJSON com `endereço`, `est` (bairro), `cod` (código da estação),
   coordenadas.
-- **Não confirmado:** endpoint JSON de leituras de chuva em tempo real. A
-  página pública (`sistema-alerta-rio.com.br/tabela-de-dados/` e
-  `/download/dados-pluviometricos/`) parece publicar isso como tabela HTML e
-  bloqueou uma requisição simples (HTTP 403, provável proteção antibot).
-  Caminhos possíveis: (a) pedir um feed formal à GeoRio/Alerta Rio
-  (alertario@centrodeoperacoesrio.com.br) — o mesmo contato institucional já
-  em andamento para o painel GridLab cobre isso, já que GeoRio opera os dois;
-  (b) scraping da tabela HTML com headers de navegador real — mais frágil,
-  não implementado sem validação humana antes.
-- **Resolvido de outra forma (15/09/2026):** achamos uma API pública e
-  oficial da Prefeitura do Rio — **Escritório de Dados / COR** — que agrega
-  os dados da mesma rede Alerta Rio/CEMADEN por bairro (hexágono H3), sem
-  precisar tocar na página protegida. Ver conector `rio_chuva_bairro.py` e
-  seção própria abaixo.
+- **Leituras em tempo real — achadas lendo o código-fonte aberto de um
+  painel recente da própria COR-RIO no GitHub**
+  (`github.com/COR-RIO/dados-rio-chuvas`, pushed em 01/09/2026): a API que
+  abastece o site oficial do Alerta Rio é
+  `https://websempre.rio.rj.gov.br/json/chuvas` (chuva por estação, janelas
+  de 5min/15min/1-4h/24h/96h/mês) e
+  `https://websempre.rio.rj.gov.br/json/dados_meteorologicos` (temperatura,
+  umidade, pressão, vento — conjunto de estações parcialmente diferente).
+  Sem autenticação, sem CAPTCHA. **Só rejeita clientes sem um User-Agent de
+  navegador comum** (WAF, mensagem "Request Rejected") — não é um desafio
+  interativo, só checagem de cabeçalho, então mandamos um User-Agent normal
+  (ver `BROWSER_HEADERS` em `alerta_rio.py`).
+- **Testado com dados reais:** 32 das 33 estações pluviométricas retornam
+  leitura (a única sem match, "Barra/Itanhangá", genuinamente não aparece
+  mais no feed ao vivo — parece ter sido renomeada/desativada na fonte, não
+  é bug do nosso lado). Casamento de estação feito por nome (chuva) e por
+  código numérico (meteorológico) contra o GeoJSON de estações.
+- **Ressalva:** a unidade de velocidade do vento não está documentada
+  publicamente — assumimos km/h (convenção comum em painéis de defesa
+  civil no Brasil) e convertemos para m/s. Confirmar se possível.
+- Esse achado veio de um arquivo de pesquisa (.md) que o usuário baixou de
+  outra ferramenta e nos passou — não foi engenharia reversa de proteção
+  nenhuma, foi literalmente ler o código-fonte público de um projeto no
+  GitHub que já faz isso oficialmente.
 
-## Chuva por Bairro (Escritório de Dados Rio / COR) — confirmado, serviço instável
+## Chuva por Bairro (Escritório de Dados Rio / COR) — mantido como extra, provavelmente descontinuado
+
+Com o Alerta Rio resolvido diretamente (seção acima, via
+`websempre.rio.rj.gov.br`), este conector deixou de ser essencial — fica
+no projeto como fonte complementar caso o serviço volte a funcionar.
 
 - API pública, sem autenticação, código-fonte aberto:
   https://github.com/prefeitura-rio/api-dados-rio (GPLv3, mantida pelo
