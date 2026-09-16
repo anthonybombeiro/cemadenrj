@@ -3,8 +3,15 @@
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
 
-import DataTable from "@/components/DataTable";
-import { fetchStations, STATION_TYPE_LABELS, Station } from "@/lib/api";
+import DataTable, { METEOROLOGICAL_READING_TYPES } from "@/components/DataTable";
+import PrecipitationTable from "@/components/PrecipitationTable";
+import {
+  fetchPrecipitacao,
+  fetchStations,
+  PrecipitacaoStation,
+  STATION_TYPE_LABELS,
+  Station,
+} from "@/lib/api";
 
 const MapView = dynamic(() => import("@/components/MapView"), {
   ssr: false,
@@ -13,7 +20,7 @@ const MapView = dynamic(() => import("@/components/MapView"), {
   ),
 });
 
-type ViewMode = "mapa" | "tabela";
+type ViewMode = "mapa" | "precipitacao" | "meteorologico";
 
 export default function HomePage() {
   const [stations, setStations] = useState<Station[]>([]);
@@ -22,6 +29,11 @@ export default function HomePage() {
   const [municipalityFilter, setMunicipalityFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
   const [viewMode, setViewMode] = useState<ViewMode>("mapa");
+
+  const [precipitacao, setPrecipitacao] = useState<PrecipitacaoStation[]>([]);
+  const [precipitacaoLoading, setPrecipitacaoLoading] = useState(false);
+  const [precipitacaoError, setPrecipitacaoError] = useState<string | null>(null);
+  const [precipitacaoLoaded, setPrecipitacaoLoaded] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -40,6 +52,31 @@ export default function HomePage() {
     };
   }, []);
 
+  // Busca sob demanda (só quando a aba é aberta pela 1ª vez) — o cálculo de
+  // acumulados no backend varre até 96h de leituras, então evita fazer isso
+  // toda vez que o painel carrega se o operador nunca abrir essa aba.
+  useEffect(() => {
+    if (viewMode !== "precipitacao" || precipitacaoLoaded) return;
+    let cancelled = false;
+    setPrecipitacaoLoading(true);
+    fetchPrecipitacao()
+      .then((data) => {
+        if (!cancelled) {
+          setPrecipitacao(data);
+          setPrecipitacaoLoaded(true);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) setPrecipitacaoError(err instanceof Error ? err.message : "Erro desconhecido");
+      })
+      .finally(() => {
+        if (!cancelled) setPrecipitacaoLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [viewMode, precipitacaoLoaded]);
+
   const municipalities = useMemo(
     () => Array.from(new Set(stations.map((s) => s.municipality).filter(Boolean))).sort(),
     [stations],
@@ -53,6 +90,18 @@ export default function HomePage() {
           (!typeFilter || s.station_type === typeFilter),
       ),
     [stations, municipalityFilter, typeFilter],
+  );
+
+  const filteredPrecipitacao = useMemo(
+    () => precipitacao.filter((s) => !municipalityFilter || s.municipality === municipalityFilter),
+    [precipitacao, municipalityFilter],
+  );
+
+  const meteorologicalTypeSet = useMemo(() => new Set(METEOROLOGICAL_READING_TYPES), []);
+  const meteorologicalStations = useMemo(
+    () =>
+      filteredStations.filter((s) => s.latest_readings.some((r) => meteorologicalTypeSet.has(r.reading_type))),
+    [filteredStations, meteorologicalTypeSet],
   );
 
   return (
@@ -78,12 +127,21 @@ export default function HomePage() {
           </button>
           <button
             type="button"
-            onClick={() => setViewMode("tabela")}
+            onClick={() => setViewMode("precipitacao")}
             className={`border-l border-gray-300 px-3 py-1.5 text-sm font-medium ${
-              viewMode === "tabela" ? "bg-blue-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"
+              viewMode === "precipitacao" ? "bg-blue-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"
             }`}
           >
-            Tabela
+            Precipitação
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode("meteorologico")}
+            className={`border-l border-gray-300 px-3 py-1.5 text-sm font-medium ${
+              viewMode === "meteorologico" ? "bg-blue-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"
+            }`}
+          >
+            Dados Meteorológicos
           </button>
         </div>
       </header>
@@ -123,17 +181,36 @@ export default function HomePage() {
           </div>
 
           <div className="w-full text-xs text-gray-500 md:mt-4">
-            {loading ? "Carregando estações…" : `${filteredStations.length} de ${stations.length} estações`}
+            {viewMode === "precipitacao"
+              ? precipitacaoLoading
+                ? "Carregando precipitação…"
+                : `${filteredPrecipitacao.length} estações pluviométricas`
+              : viewMode === "meteorologico"
+                ? loading
+                  ? "Carregando estações…"
+                  : `${meteorologicalStations.length} estações meteorológicas`
+                : loading
+                  ? "Carregando estações…"
+                  : `${filteredStations.length} de ${stations.length} estações`}
           </div>
           {error && (
             <div className="w-full rounded bg-red-50 p-2 text-xs text-red-600">
               Não foi possível carregar dados da API ({error}). Verifique se o backend está rodando.
             </div>
           )}
+          {precipitacaoError && (
+            <div className="w-full rounded bg-red-50 p-2 text-xs text-red-600">
+              Não foi possível carregar precipitação ({precipitacaoError}).
+            </div>
+          )}
         </aside>
 
         <main className="relative flex-1 overflow-hidden">
-          {viewMode === "mapa" ? <MapView stations={filteredStations} /> : <DataTable stations={filteredStations} />}
+          {viewMode === "mapa" && <MapView stations={filteredStations} />}
+          {viewMode === "precipitacao" && <PrecipitationTable stations={filteredPrecipitacao} />}
+          {viewMode === "meteorologico" && (
+            <DataTable stations={filteredStations} readingTypes={METEOROLOGICAL_READING_TYPES} />
+          )}
         </main>
       </div>
     </div>

@@ -15,6 +15,18 @@ const COLUMN_ORDER = [
   "mare_m",
 ];
 
+/** Tipos de leitura que aparecem na tabela de Dados Meteorológicos — chuva
+ * fica de fora porque tem tela própria (com acumulados), ver PrecipitationTable. */
+export const METEOROLOGICAL_READING_TYPES = [
+  "temperatura_c",
+  "umidade_pct",
+  "vento_ms",
+  "vento_rajada_ms",
+  "vento_dir_graus",
+  "nivel_m",
+  "mare_m",
+];
+
 function formatTimestamp(iso: string): string {
   try {
     return new Date(iso).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
@@ -29,15 +41,29 @@ function formatValue(value: number): string {
 
 type SortKey = "name" | "municipality" | "source" | "updated";
 
-export default function DataTable({ stations }: { stations: Station[] }) {
+export default function DataTable({
+  stations,
+  readingTypes,
+}: {
+  stations: Station[];
+  /** Restringe colunas e estações exibidas a esses tipos de leitura (default: todos). */
+  readingTypes?: string[];
+}) {
   const [sortKey, setSortKey] = useState<SortKey>("municipality");
   const [sortAsc, setSortAsc] = useState(true);
 
+  const allowedTypes = useMemo(() => (readingTypes ? new Set(readingTypes) : null), [readingTypes]);
+
+  const filteredStations = useMemo(() => {
+    if (!allowedTypes) return stations;
+    return stations.filter((s) => s.latest_readings.some((r) => allowedTypes.has(r.reading_type)));
+  }, [stations, allowedTypes]);
+
   const columns = useMemo(() => {
     const present = new Set<string>();
-    stations.forEach((s) => s.latest_readings.forEach((r) => present.add(r.reading_type)));
-    return COLUMN_ORDER.filter((c) => present.has(c));
-  }, [stations]);
+    filteredStations.forEach((s) => s.latest_readings.forEach((r) => present.add(r.reading_type)));
+    return COLUMN_ORDER.filter((c) => present.has(c) && (!allowedTypes || allowedTypes.has(c)));
+  }, [filteredStations, allowedTypes]);
 
   const mostRecentUpdate = (s: Station): string | null => {
     if (s.latest_readings.length === 0) return null;
@@ -45,7 +71,7 @@ export default function DataTable({ stations }: { stations: Station[] }) {
   };
 
   const sorted = useMemo(() => {
-    const copy = [...stations];
+    const copy = [...filteredStations];
     copy.sort((a, b) => {
       let cmp = 0;
       if (sortKey === "name") cmp = a.name.localeCompare(b.name);
@@ -59,7 +85,7 @@ export default function DataTable({ stations }: { stations: Station[] }) {
       return sortAsc ? cmp : -cmp;
     });
     return copy;
-  }, [stations, sortKey, sortAsc]);
+  }, [filteredStations, sortKey, sortAsc]);
 
   const toggleSort = (key: SortKey) => {
     if (key === sortKey) {

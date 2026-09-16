@@ -52,6 +52,29 @@ export async function fetchStationReadings(stationId: number): Promise<Reading[]
   return getJson<Reading[]>(`/stations/${stationId}/readings/`);
 }
 
+export type PrecipitacaoStation = {
+  id: number;
+  source: string;
+  external_id: string;
+  name: string;
+  municipality: string;
+  latitude: number;
+  longitude: number;
+  updated_at: string | null;
+  /** Última leitura "bruta" — só preenchido pra fontes tipo "balde" (Alerta Rio, INMET, ...). */
+  chuva_agora_mm: number | null;
+  /** Acumulado desde a meia-noite local. Sempre que disponível, pra qualquer fonte. */
+  acumulado_hoje_mm: number | null;
+  /** Só disponível pra fontes tipo "balde" — Wunderground/Plugfield reportam total corrido do dia, não dá pra somar em janelas menores sem contar errado. */
+  acumulado_1h_mm: number | null;
+  acumulado_24h_mm: number | null;
+  acumulado_96h_mm: number | null;
+};
+
+export async function fetchPrecipitacao(): Promise<PrecipitacaoStation[]> {
+  return getJson<PrecipitacaoStation[]>("/stations/precipitacao/");
+}
+
 export const READING_TYPE_LABELS: Record<string, string> = {
   chuva_mm: "Chuva acumulada (mm)",
   nivel_m: "Nível do rio (m)",
