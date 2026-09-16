@@ -15,6 +15,19 @@ from pathlib import Path
 import dj_database_url
 from dotenv import load_dotenv
 
+# PyMySQL no lugar de mysqlclient: o driver "nativo" do Django para MySQL
+# (mysqlclient) precisa compilar contra headers do libmysqlclient, que não
+# existem em hospedagem compartilhada sem root (como o HostGator). PyMySQL
+# é puro Python e esse shim faz o Django enxergá-lo como se fosse o
+# mysqlclient. Só importa se o pacote estiver instalado — não quebra em
+# ambientes que usam só SQLite/Postgres.
+try:
+    import pymysql
+
+    pymysql.install_as_MySQLdb()
+except ImportError:
+    pass
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 
@@ -119,6 +132,14 @@ CELERY_TIMEZONE = TIME_ZONE
 # Gere um valor aleatório longo (ex: `openssl rand -hex 32`) e configure o
 # MESMO valor aqui e no secret INGEST_SHARED_SECRET do repositório GitHub.
 INGEST_SHARED_SECRET = os.environ.get("INGEST_SHARED_SECRET", "")
+
+# Segredo compartilhado para o endpoint /api/admin/run/ — existe porque o
+# HostGator (hospedagem compartilhada) não dá acesso a shell, então rodar
+# `migrate`/`collectstatic`/ingestão precisa ser feito via HTTP (chamado
+# manualmente na primeira vez, depois pelos Cron Jobs do cPanel). Gere um
+# valor aleatório longo (ex: `openssl rand -hex 32`) — NUNCA reaproveitar o
+# INGEST_SHARED_SECRET aqui, são segredos com poderes bem diferentes.
+ADMIN_TRIGGER_SECRET = os.environ.get("ADMIN_TRIGGER_SECRET", "")
 
 # Conta institucional CEMADEN-RJ na Plugfield (estações meteorológicas
 # municipais). NUNCA colocar esses valores direto no código — só aqui,

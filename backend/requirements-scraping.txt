@@ -1,0 +1,10 @@
+# Dependências só do scraping local/GitHub Actions do INMET (ver
+# ingestion/connectors/inmet.py e scripts/scrape_inmet_and_push.py).
+# NÃO instalar no HostGator — Selenium precisa de um Chrome de verdade,
+# que não roda em hospedagem compartilhada sem root. O runner do GitHub
+# Actions já instala essas mesmas versões por conta própria (ver
+# .github/workflows/scrape-inmet.yml), este arquivo é só para
+# desenvolvimento local.
+selenium==4.25.0
+pandas==2.2.3
+lxml==5.3.0

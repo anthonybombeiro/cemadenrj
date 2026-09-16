@@ -1,6 +1,7 @@
 from django.urls import path
 from rest_framework.routers import DefaultRouter
 
+from .admin_views import AdminOpsView
 from .ingest_views import RemoteReadingsIngestView
 from .views import AlertEventViewSet, SourceViewSet, StationViewSet
 
@@ -11,4 +12,5 @@ router.register("alerts", AlertEventViewSet, basename="alert")
 
 urlpatterns = [
     path("ingest/readings/", RemoteReadingsIngestView.as_view(), name="ingest-readings"),
+    path("admin/run/", AdminOpsView.as_view(), name="admin-run"),
 ] + router.urls
