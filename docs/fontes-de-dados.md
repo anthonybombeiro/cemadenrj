@@ -255,20 +255,51 @@ MODERADO / ALTO / MUITO ALTO):
 - **Risco de Incêndio Florestal** — `/monitoramento/v2/mapa/redec.php?action=2`
 
 Cada mapa mostra um timestamp de atualização (ex: "16/09/2026 às 02:49:08").
-Fonte dos números por trás de cada camada ainda não identificada — são,
-quase certamente, classificações que o próprio CEMADEN nacional calcula e
-entrega à Defesa Civil-RJ (ele publica avisos de risco geológico/hidrológico
-por município nacionalmente) e/ou repasses do INMET (severidade
-meteorológica) e do INEA/Corpo de Bombeiros (incêndio florestal) — mas isso
-é hipótese, não confirmado. **Próximo passo antes de construir isso aqui:
-pesquisar se o CEMADEN nacional expõe essas classificações por município via
-webservice** (o mesmo domínio já usado pelo conector `cemaden_nacional.py`
-tem outros recursos além do de estações) — só depois dá pra fazer um
-conector de verdade em vez de dado fictício.
 
-Acesso via API/feed de estações (não de alertas) depende de contato
-institucional direto com a Defesa Civil-RJ e/ou GridLab — em andamento pelo
-usuário deste projeto.
+**Atualização — CONFIRMADO E CONSTRUÍDO (setembro/2026):** a fonte por trás
+dessas 4 camadas é uma API pública própria da Defesa Civil-RJ, achada em
+`https://painelcemadenrj.defesacivil.rj.gov.br/integracao/envia/cemaden/`
+— feita para consumo por Power BI (tela de resumo com o título "API
+Integracao Power BI"), **sem login**. 8 endpoints (tabelas HTML), dos quais
+usamos 4 (um por camada de alerta):
+
+| Endpoint | Camada | Granularidade |
+|---|---|---|
+| `atualizacao_hidro.php` | Aviso Hidrológico | REDEC (11 regionais) |
+| `atualizacao_geo.php` | Aviso Geológico | REDEC |
+| `atualizacao_municipio_geo.php` | Aviso Geológico | Município (92, cobertura completa) |
+| `redec_meteoro.php?action=1` | Severidade Meteorológica | REDEC |
+| `redec_meteoro.php?action=2` | Risco de Incêndio Florestal | REDEC |
+
+(`atualizacao_municipio_hidro.php` existe mas devolve vazio — hidrológico
+não tem granularidade municipal na fonte, só REDEC.)
+
+A própria página de resumo tem uma seção "Legenda" com as cores oficiais
+usadas pela Defesa Civil (usadas também no nosso frontend, em
+`RISK_LEVEL_COLORS` de `frontend/src/lib/api.ts`): MUITO BAIXO `#28a745`,
+BAIXO `#ffff19`, MODERADO `#ffc107`, ALTO `#bd2130`, MUITO ALTO `#6f42c1`.
+
+**Atenção — endpoints pesados:** cada um devolve o HISTÓRICO COMPLETO de
+alterações, não só o estado atual (`atualizacao_municipio_geo.php` passou
+de 40MB num teste real). O conector (`backend/ingestion/connectors/
+cemaden_rj_alertas.py`) faz parsing em streaming pra não estourar memória
+em hospedagem compartilhada, e guarda só o estado mais recente por
+REDEC/município (nunca o histórico) no modelo `RiskAlert`.
+
+**Atenção — dado pessoal exposto sem querer, possivelmente:** o endpoint
+por município inclui o nome do funcionário responsável por cada lançamento
+de risco (ex: "Tiago Ferreli"). É público, sem autenticação. Não é algo que
+este projeto usa além de exibir (é dado legítimo da própria fonte), mas
+vale a Defesa Civil-RJ estar ciente de que está exposto.
+
+Lista oficial das 11 REDECs do estado (útil como referência pra qualquer
+hierarquia futura por regional): Baixada Fluminense, Baixada Litorânea,
+Capital, Costa Verde, Metropolitana, Norte, Noroeste, Serrana I, Serrana
+II, Sul I, Sul II.
+
+Acesso via API/feed de **estações** (não de alertas — isso já está
+resolvido acima) ainda depende de contato institucional direto com a
+Defesa Civil-RJ e/ou GridLab — em andamento pelo usuário deste projeto.
 
 ## Ainda não iniciado (Fase 3 do plano)
 
