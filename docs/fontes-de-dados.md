@@ -233,13 +233,42 @@ consentimento implícito do dono ao deixar a estação pública).
 ## Painel CEMADEN-RJ (GridLab) — sem API pública
 
 `https://painelcemadenrj.defesacivil.rj.gov.br` é uma plataforma comercial
-operada pela GridLab Sistemas e Serviços Ltda para a Defesa Civil-RJ. Tem
-proteção anti-bot (checagem de navegador) na página raiz e não expõe um
-endpoint JSON óbvio na tela de mapa de pluviômetros testada (só CSS/HTML
-estático de um iframe). Acesso via API/feed depende de contato institucional
-direto com a Defesa Civil-RJ e/ou GridLab — em andamento pelo usuário deste
-projeto. Assim que existir, vira só mais um conector em
-`backend/ingestion/connectors/`, seguindo o mesmo padrão dos demais.
+operada pela GridLab Sistemas e Serviços Ltda para a Defesa Civil-RJ. A tela
+de dashboard (`/dashboard/...`) exige login; mas o mapa de alertas em tempo
+real (`/monitoramento/v2/mapa/`) é **público, sem login** — vale como
+referência de UX, mas os dados são renderizados 100% server-side em PHP
+(o SVG do mapa do RJ já vem com as cores por município embutidas no HTML;
+não tem endpoint JSON separado pra copiar — visto no código-fonte de
+`monitoramento/v2/js/map.js`, que só lê `<path>` já coloridos, não busca
+nada via fetch/AJAX). Não dá pra "espelhar" tecnicamente; teria que replicar
+com dado próprio.
+
+**As 4 camadas de alerta que o usuário quer no nosso painel existem nesse
+mapa** (confirmado navegando em setembro/2026), uma coisa boa: dá pra saber
+exatamente o que construir. Todas são um mapa coroplético por município (não
+por estação pontual), com a mesma escala de 5 níveis (MUITO BAIXO / BAIXO /
+MODERADO / ALTO / MUITO ALTO):
+
+- **Monitoramento do Risco Hidrológico** — `/monitoramento/v2/mapa/`
+- **Monitoramento do Risco de Deslizamento** (geológico) — mesma URL, aba ao lado
+- **Nível de Severidade Meteorológica** — `/monitoramento/v2/mapa/redec.php?action=1`
+- **Risco de Incêndio Florestal** — `/monitoramento/v2/mapa/redec.php?action=2`
+
+Cada mapa mostra um timestamp de atualização (ex: "16/09/2026 às 02:49:08").
+Fonte dos números por trás de cada camada ainda não identificada — são,
+quase certamente, classificações que o próprio CEMADEN nacional calcula e
+entrega à Defesa Civil-RJ (ele publica avisos de risco geológico/hidrológico
+por município nacionalmente) e/ou repasses do INMET (severidade
+meteorológica) e do INEA/Corpo de Bombeiros (incêndio florestal) — mas isso
+é hipótese, não confirmado. **Próximo passo antes de construir isso aqui:
+pesquisar se o CEMADEN nacional expõe essas classificações por município via
+webservice** (o mesmo domínio já usado pelo conector `cemaden_nacional.py`
+tem outros recursos além do de estações) — só depois dá pra fazer um
+conector de verdade em vez de dado fictício.
+
+Acesso via API/feed de estações (não de alertas) depende de contato
+institucional direto com a Defesa Civil-RJ e/ou GridLab — em andamento pelo
+usuário deste projeto.
 
 ## Ainda não iniciado (Fase 3 do plano)
 
