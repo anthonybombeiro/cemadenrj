@@ -99,6 +99,17 @@ def _normaliza_risco(valor: str) -> str | None:
     return _RISCO_MAP.get((valor or "").strip().upper())
 
 
+def _normaliza_redec(valor: str) -> str:
+    # A fonte não é consistente: `atualizacao_municipio_geo.php` manda
+    # "BAIXADA  LITORÂNEA" com DOIS espaços, enquanto `redec_meteoro.php`
+    # e os outros endpoints mandam um só — sem isso, o nome de REDEC vindo
+    # de um endpoint não bate com o de outro (achado comparando os dois
+    # conjuntos direto no banco), quebrando qualquer código que precise
+    # cruzar REDEC entre tipos de alerta diferentes (ex: colorir município
+    # pelo risco da REDEC quando o tipo não tem dado municipal).
+    return " ".join((valor or "").split())
+
+
 def _parse_data_hora(data_str: str, hora_str: str) -> dt.datetime | None:
     data_str = (data_str or "").strip()
     hora_str = (hora_str or "").strip() or "00:00:00"
@@ -202,6 +213,7 @@ def _fetch_redec_log(tipo: str, url: str) -> dict[str, dict]:
         if len(cells) < 9:
             return
         _aviso, redec, mensagem, atualizacao, *_resto = cells
+        redec = _normaliza_redec(redec)
         chave_ordem = (_to_int(mensagem), _to_int(atualizacao))
         atual = melhor.get(redec)
         if atual is None or chave_ordem > atual[:2]:
@@ -256,6 +268,7 @@ def _fetch_municipio(url: str) -> dict[str, dict]:
             data_a, hora_a, _ano_a, resp_a,
             fonte,
         ) = cells
+        redec = _normaliza_redec(redec)
         risco_norm = _normaliza_risco(risco)
         if risco_norm is None:
             continue

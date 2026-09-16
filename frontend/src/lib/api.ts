@@ -127,6 +127,22 @@ export async function fetchRiskAlerts(
   return Array.isArray(data) ? data : data.results;
 }
 
+/** Mesma normalização usada pra gerar `rj_municipios.geojson` (maiúsculas,
+ * sem acento, espaços colapsados) — precisa bater dos dois lados pra casar
+ * o nome que vem da Defesa Civil-RJ com o nome oficial do IBGE no polígono.
+ * Só um nome diverge entre as duas fontes (achado comparando as 92 de cada
+ * lado): "Armação de Búzios" (Defesa Civil) vs "Armação dos Búzios" (IBGE). */
+export function normalizeMunicipioName(nome: string): string {
+  const normalizado = nome
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "")
+    .toUpperCase()
+    .replace(/\s+/g, " ")
+    .trim();
+  if (normalizado === "ARMACAO DE BUZIOS") return "ARMACAO DOS BUZIOS";
+  return normalizado;
+}
+
 export const READING_TYPE_LABELS: Record<string, string> = {
   chuva_mm: "Chuva acumulada (mm)",
   nivel_m: "Nível do rio (m)",

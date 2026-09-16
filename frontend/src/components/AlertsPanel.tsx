@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import {
   fetchRiskAlerts,
+  normalizeMunicipioName,
   RISK_ALERT_TIPO_LABELS,
   RISK_LEVEL_COLORS,
   RISK_LEVEL_LABELS,
@@ -11,9 +12,19 @@ import {
   RiskAlertTipo,
   RiskLevel,
 } from "@/lib/api";
+import RiskChoroplethMap from "@/components/RiskChoroplethMap";
 
 const TIPOS: RiskAlertTipo[] = ["hidrologico", "geologico", "meteorologico", "incendio"];
 const NIVEIS: RiskLevel[] = ["muito_baixo", "baixo", "moderado", "alto", "muito_alto"];
+
+/** A partir de qual nível listar município no card da REDEC, por tipo de
+ * alerta — pedido explícito do operador do sistema: hidrológico a partir
+ * de "Alto", geológico a partir de "Moderado". Meteorológico/incêndio não
+ * têm granularidade municipal na fonte, por isso não entram aqui. */
+const DESTAQUE_MUNICIPIO_A_PARTIR_DE: Partial<Record<RiskAlertTipo, RiskLevel[]>> = {
+  hidrologico: ["alto", "muito_alto"],
+  geologico: ["moderado", "alto", "muito_alto"],
+};
 
 /** Preto ou branco conforme o fundo, pra manter o texto legível em qualquer
  * cor da escala (BAIXO é amarelo puro — texto branco fica ilegível nele). */
@@ -34,15 +45,32 @@ function formatTimestamp(iso: string | null): string {
   }
 }
 
-function RedecGrid({ alerts }: { alerts: RiskAlert[] }) {
+function RedecGrid({ alerts, municipioAlerts, tipo }: { alerts: RiskAlert[]; municipioAlerts: RiskAlert[]; tipo: RiskAlertTipo }) {
   const sorted = useMemo(
     () => [...alerts].sort((a, b) => NIVEIS.indexOf(b.risco) - NIVEIS.indexOf(a.risco) || a.redec.localeCompare(b.redec)),
     [alerts],
   );
+
+  const niveisDestaque = DESTAQUE_MUNICIPIO_A_PARTIR_DE[tipo];
+
+  const municipiosDestaquePorRedec = useMemo(() => {
+    const mapa = new Map<string, string[]>();
+    if (!niveisDestaque) return mapa;
+    for (const m of municipioAlerts) {
+      if (!niveisDestaque.includes(m.risco)) continue;
+      const lista = mapa.get(m.redec) ?? [];
+      lista.push(m.municipio);
+      mapa.set(m.redec, lista);
+    }
+    for (const lista of mapa.values()) lista.sort((a, b) => a.localeCompare(b));
+    return mapa;
+  }, [municipioAlerts, niveisDestaque]);
+
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
       {sorted.map((a) => {
         const bg = RISK_LEVEL_COLORS[a.risco];
+        const destaque = municipiosDestaquePorRedec.get(a.redec);
         return (
           <div key={a.id} className="rounded-lg border border-gray-200 p-3 shadow-sm" style={{ backgroundColor: bg }}>
             <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: textColorFor(bg) }}>
@@ -51,6 +79,11 @@ function RedecGrid({ alerts }: { alerts: RiskAlert[] }) {
             <div className="mt-1 text-lg font-bold" style={{ color: textColorFor(bg) }}>
               {RISK_LEVEL_LABELS[a.risco]}
             </div>
+            {destaque && destaque.length > 0 && (
+              <div className="mt-1 text-[11px] leading-snug opacity-90" style={{ color: textColorFor(bg) }}>
+                {destaque.join(", ")}
+              </div>
+            )}
             <div className="mt-1 text-[11px] opacity-80" style={{ color: textColorFor(bg) }}>
               Atualizado: {formatTimestamp(a.atualizado_em ?? a.criado_em)}
             </div>
@@ -144,9 +177,27 @@ export default function AlertsPanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Geológico sempre traz os 92 municípios. Hidrológico só lista município
-  // quando o risco chega a "alto" (confirmado com o operador do sistema) —
-  // por isso a lista fica vazia na maior parte do tempo, o que é esperado.
+  // Município→REDEC não muda entre abas — busca 1x (via geológico, que
+  // sempre tem os 92) e reusa pra colorir o mapa de meteorológico/incêndio
+  // (que só têm dado por REDEC) por município.
+  const [municipioRedecMap, setMunicipioRedecMap] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let cancelled = false;
+    fetchRiskAlerts("geologico", "municipio")
+      .then((data) => {
+        if (cancelled) return;
+        const mapa: Record<string, string> = {};
+        for (const a of data) mapa[normalizeMunicipioName(a.municipio)] = a.redec;
+        setMunicipioRedecMap(mapa);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Geológico e hidrológico têm granularidade municipal na fonte (os 92,
+  // confirmado ao vivo pros dois); meteorológico/incêndio só têm por REDEC.
   const temGranularidadeMunicipal = tipo === "geologico" || tipo === "hidrologico";
 
   useEffect(() => {
@@ -214,7 +265,7 @@ export default function AlertsPanel() {
       ) : (
         <>
           <h3 className="mb-2 text-sm font-semibold text-gray-700">Por REDEC (regional de Defesa Civil)</h3>
-          <RedecGrid alerts={redecAlerts} />
+          <RedecGrid alerts={redecAlerts} municipioAlerts={municipioAlerts} tipo={tipo} />
           {temGranularidadeMunicipal && (
             <MunicipioTable
               alerts={municipioAlerts}
@@ -225,6 +276,12 @@ export default function AlertsPanel() {
               }
             />
           )}
+          <RiskChoroplethMap
+            tipo={tipo}
+            redecAlerts={redecAlerts}
+            municipioAlerts={municipioAlerts}
+            municipioRedecMap={municipioRedecMap}
+          />
         </>
       )}
 
