@@ -64,7 +64,7 @@ function RedecGrid({ alerts }: { alerts: RiskAlert[] }) {
   );
 }
 
-function MunicipioTable({ alerts }: { alerts: RiskAlert[] }) {
+function MunicipioTable({ alerts, emptyMessage }: { alerts: RiskAlert[]; emptyMessage?: string }) {
   const [sortAsc, setSortAsc] = useState(false);
   const [filter, setFilter] = useState("");
 
@@ -130,7 +130,9 @@ function MunicipioTable({ alerts }: { alerts: RiskAlert[] }) {
           </tbody>
         </table>
         {sorted.length === 0 && (
-          <div className="p-6 text-center text-sm text-gray-400">Nenhum município encontrado.</div>
+          <div className="p-6 text-center text-sm text-gray-400">
+            {alerts.length === 0 && emptyMessage ? emptyMessage : "Nenhum município encontrado."}
+          </div>
         )}
       </div>
     </div>
@@ -144,7 +146,10 @@ export default function AlertsPanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const temGranularidadeMunicipal = tipo === "geologico";
+  // Geológico sempre traz os 92 municípios. Hidrológico só lista município
+  // quando o risco chega a "alto" (confirmado com o operador do sistema) —
+  // por isso a lista fica vazia na maior parte do tempo, o que é esperado.
+  const temGranularidadeMunicipal = tipo === "geologico" || tipo === "hidrologico";
 
   useEffect(() => {
     let cancelled = false;
@@ -212,7 +217,16 @@ export default function AlertsPanel() {
         <>
           <h3 className="mb-2 text-sm font-semibold text-gray-700">Por REDEC (regional de Defesa Civil)</h3>
           <RedecGrid alerts={redecAlerts} />
-          {temGranularidadeMunicipal && <MunicipioTable alerts={municipioAlerts} />}
+          {temGranularidadeMunicipal && (
+            <MunicipioTable
+              alerts={municipioAlerts}
+              emptyMessage={
+                tipo === "hidrologico"
+                  ? "Nenhum município em risco hidrológico alto no momento — essa lista só aparece a partir do nível \"Alto\"."
+                  : undefined
+              }
+            />
+          )}
         </>
       )}
 

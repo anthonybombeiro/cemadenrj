@@ -11,14 +11,26 @@ levantamento completo dos 8 endpoints. Usamos 4 deles aqui — um por
 camada de alerta (hidrológico, geológico, severidade meteorológica,
 incêndio florestal):
 
-  - atualizacao_hidro.php          → hidrológico, por REDEC
-  - atualizacao_geo.php            → geológico, por REDEC
-  - atualizacao_municipio_geo.php  → geológico, por município (mais fino)
-  - redec_meteoro.php?action=1     → severidade meteorológica, por REDEC
-  - redec_meteoro.php?action=2     → incêndio florestal, por REDEC
+  - atualizacao_hidro.php           → hidrológico, por REDEC
+  - atualizacao_geo.php             → geológico, por REDEC
+  - atualizacao_municipio_geo.php   → geológico, por município (sempre os 92)
+  - atualizacao_municipio_hidro.php → hidrológico, por município — MAS só
+    lista município a partir do risco "ALTO" (confirmado pelo usuário, que
+    opera o sistema de verdade). Com todas as REDECs em risco moderado ou
+    menor (setembro/2026), esse endpoint respondeu tanto 200 com corpo vazio
+    (sem `<table>`) quanto 500 Internal Server Error em testes diferentes —
+    parece ser um bug do lado deles quando não há nada a listar, não algo
+    que dá pra evitar daqui. `sync()` trata os dois casos como "sem dado
+    agora" (loga o erro, não deleta nada) em vez de deixar a falha propagar.
+    Quando isso passa a responder 200 com linhas de verdade (município
+    real em ALTO), o parsing funciona normal — e como só listamos quem
+    está atualmente acima do limiar, `sync()` também apaga registro de
+    município que sumiu da resposta (senão um "ALTO" antigo ficaria preso
+    pra sempre depois do risco baixar).
+  - redec_meteoro.php?action=1      → severidade meteorológica, por REDEC
+  - redec_meteoro.php?action=2      → incêndio florestal, por REDEC
 
-Não existe granularidade municipal para hidrológico/meteorológico/incêndio
-na fonte (testado — `atualizacao_municipio_hidro.php` volta vazio).
+Não existe granularidade municipal pra meteorológico/incêndio na fonte.
 
 IMPORTANTE sobre tamanho: esses endpoints devolvem o HISTÓRICO COMPLETO de
 alterações, não só o estado atual — o de geológico por município já passou
@@ -176,11 +188,15 @@ def _fetch_redec_log(tipo: str, url: str) -> dict[str, dict]:
     return resultado
 
 
-def _fetch_municipio_geo() -> dict[str, dict]:
-    """geo por município: colunas Aviso, Redec, Municipio, Mensagem,
+def _fetch_municipio(url: str) -> dict[str, dict]:
+    """Por município: colunas Aviso, Redec, Municipio, Mensagem,
     Atualização, Risco, Data Criação, Hora Criação, Ano Criação,
     Responsável Criação, Data Atualização, Hora Atualização, Ano
-    Atualização, Responsável Atualização, Fonte."""
+    Atualização, Responsável Atualização, Fonte. Usada tanto por geológico
+    (sempre populada) quanto por hidrológico (só tem linhas quando algum
+    município chega a "ALTO" — pode voltar vazia/sem `<table>` nenhuma, o
+    que o `_stream_rows` trata normalmente, sem erro: `on_row` simplesmente
+    nunca é chamado e o resultado fica `{}`)."""
     melhor: dict[str, tuple[int, int, list[str]]] = {}
 
     def on_row(cells: list[str]) -> None:
@@ -192,7 +208,7 @@ def _fetch_municipio_geo() -> dict[str, dict]:
         if atual is None or chave_ordem > atual[:2]:
             melhor[municipio] = (*chave_ordem, cells)
 
-    _stream_rows(f"{BASE_URL}/atualizacao_municipio_geo.php", on_row)
+    _stream_rows(url, on_row)
 
     resultado = {}
     for municipio, (_num, _upd, cells) in melhor.items():
@@ -291,16 +307,40 @@ def sync() -> AlertSyncResult:
             result.upserted += 1
 
     try:
-        por_municipio = _fetch_municipio_geo()
+        por_municipio_geo = _fetch_municipio(f"{BASE_URL}/atualizacao_municipio_geo.php")
     except Exception as exc:  # noqa: BLE001
         logger.exception("Falha ao buscar alertas geológicos por município")
         result.errors.append(f"geologico_municipio: {exc}")
-        por_municipio = {}
-    for dados in por_municipio.values():
+        por_municipio_geo = {}
+    for dados in por_municipio_geo.values():
         RiskAlert.objects.update_or_create(
             tipo=RiskAlert.Tipo.GEOLOGICO, redec=dados["redec"], municipio=dados["municipio"],
             defaults={k: v for k, v in dados.items() if k not in ("redec", "municipio")},
         )
         result.upserted += 1
+
+    # Hidrológico por município é diferente: a fonte só lista município a
+    # partir do risco "ALTO" (confirmado pelo usuário) — ao contrário do
+    # geológico, que sempre traz os 92. Isso significa que um município
+    # pode SUMIR da resposta (quando o risco cai de volta pra moderado/
+    # baixo), e se a gente só fizer upsert o registro antigo fica "preso"
+    # em ALTO pra sempre. Por isso, apaga os que não vieram nesta rodada.
+    try:
+        por_municipio_hidro = _fetch_municipio(f"{BASE_URL}/atualizacao_municipio_hidro.php")
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Falha ao buscar alertas hidrológicos por município")
+        result.errors.append(f"hidrologico_municipio: {exc}")
+        por_municipio_hidro = None
+
+    if por_municipio_hidro is not None:
+        RiskAlert.objects.filter(
+            tipo=RiskAlert.Tipo.HIDROLOGICO
+        ).exclude(municipio="").exclude(municipio__in=por_municipio_hidro.keys()).delete()
+        for dados in por_municipio_hidro.values():
+            RiskAlert.objects.update_or_create(
+                tipo=RiskAlert.Tipo.HIDROLOGICO, redec=dados["redec"], municipio=dados["municipio"],
+                defaults={k: v for k, v in dados.items() if k not in ("redec", "municipio")},
+            )
+            result.upserted += 1
 
     return result
