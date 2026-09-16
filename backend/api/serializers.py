@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from core.models import AlertEvent, Reading, Source, Station
+from core.models import AlertEvent, Reading, RiskAlert, Source, Station
 
 
 class SourceSerializer(serializers.ModelSerializer):
@@ -47,6 +47,23 @@ class ReadingSerializer(serializers.ModelSerializer):
     class Meta:
         model = Reading
         fields = ["id", "reading_type", "value", "timestamp"]
+
+
+class RiskAlertSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = RiskAlert
+        fields = [
+            "id",
+            "tipo",
+            "redec",
+            "municipio",
+            "risco",
+            "numero_externo",
+            "responsavel",
+            "criado_em",
+            "atualizado_em",
+            "fonte",
+        ]
 
 
 class AlertEventSerializer(serializers.ModelSerializer):

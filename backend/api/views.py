@@ -6,11 +6,12 @@ from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from core.models import AlertEvent, Reading, Source, Station
+from core.models import AlertEvent, Reading, RiskAlert, Source, Station
 
 from .serializers import (
     AlertEventSerializer,
     ReadingSerializer,
+    RiskAlertSerializer,
     SourceSerializer,
     StationListSerializer,
 )
@@ -138,4 +139,23 @@ class AlertEventViewSet(viewsets.ReadOnlyModelViewSet):
         qs = AlertEvent.objects.select_related("rule", "station").order_by("-triggered_at")
         if self.request.query_params.get("active") == "true":
             qs = qs.filter(resolved_at__isnull=True)
+        return qs
+
+
+class RiskAlertViewSet(viewsets.ReadOnlyModelViewSet):
+    """Classificações de risco oficiais da Defesa Civil-RJ (hidrológico,
+    geológico, severidade meteorológica, incêndio florestal) — ver
+    ingestion/connectors/cemaden_rj_alertas.py."""
+
+    serializer_class = RiskAlertSerializer
+
+    def get_queryset(self):
+        qs = RiskAlert.objects.all()
+        params = self.request.query_params
+        if tipo := params.get("tipo"):
+            qs = qs.filter(tipo=tipo)
+        if params.get("escopo") == "redec":
+            qs = qs.filter(municipio="")
+        elif params.get("escopo") == "municipio":
+            qs = qs.exclude(municipio="")
         return qs

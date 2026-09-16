@@ -122,6 +122,60 @@ class AlertRule(models.Model):
         return value <= self.threshold_value
 
 
+class RiskAlert(models.Model):
+    """Classificação de risco oficial da Defesa Civil-RJ (CEMADEN-RJ/SEDEC),
+    consumida da API pública de integração Power BI do painel GridLab
+    (`/integracao/envia/cemaden/` — ver docs/fontes-de-dados.md). Diferente
+    de `AlertRule`/`AlertEvent` (que são regras DESTE sistema disparadas por
+    leitura de estação): aqui é a classificação já pronta que a Defesa Civil
+    emite por REDEC ou por município.
+
+    Guarda só o estado ATUAL por (tipo, redec, município) — não o histórico
+    completo que a fonte expõe (esse histórico pode passar de 40MB por
+    tipo; sem uso operacional aqui, e cada sync sobrescreve o registro via
+    upsert)."""
+
+    class Tipo(models.TextChoices):
+        HIDROLOGICO = "hidrologico", "Aviso Hidrológico"
+        GEOLOGICO = "geologico", "Aviso Geológico"
+        METEOROLOGICO = "meteorologico", "Nível de Severidade Meteorológica"
+        INCENDIO = "incendio", "Risco de Incêndio Florestal"
+
+    class Risco(models.TextChoices):
+        MUITO_BAIXO = "muito_baixo", "Muito baixo"
+        BAIXO = "baixo", "Baixo"
+        MODERADO = "moderado", "Moderado"
+        ALTO = "alto", "Alto"
+        MUITO_ALTO = "muito_alto", "Muito alto"
+
+    tipo = models.CharField(max_length=20, choices=Tipo.choices)
+    redec = models.CharField(max_length=40, help_text="Regional de Defesa Civil (ex: 'SERRANA I').")
+    municipio = models.CharField(
+        max_length=120, blank=True,
+        help_text="Só preenchido pra tipos com granularidade municipal (hoje: só Geológico).",
+    )
+    risco = models.CharField(max_length=20, choices=Risco.choices)
+    numero_externo = models.CharField(
+        max_length=20, blank=True, help_text="ID do boletim/aviso na fonte original."
+    )
+    responsavel = models.CharField(max_length=120, blank=True)
+    criado_em = models.DateTimeField(null=True, blank=True)
+    atualizado_em = models.DateTimeField(null=True, blank=True)
+    fonte = models.CharField(max_length=120, blank=True, default="CEMADEN-RJ - SEDEC")
+    raw_payload = models.JSONField(default=dict, blank=True)
+    ingested_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["tipo", "redec", "municipio"], name="unique_risk_alert_scope")
+        ]
+        ordering = ["tipo", "redec", "municipio"]
+
+    def __str__(self):
+        alvo = self.municipio or self.redec
+        return f"{self.get_tipo_display()} · {alvo} · {self.get_risco_display()}"
+
+
 class AlertEvent(models.Model):
     rule = models.ForeignKey(AlertRule, on_delete=models.CASCADE, related_name="events")
     station = models.ForeignKey(Station, on_delete=models.CASCADE, related_name="alert_events")

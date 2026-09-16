@@ -12,6 +12,9 @@ Deliberadamente uma lista BRANCA fixa de ações (nunca comando arbitrário):
   - "collectstatic": coleta arquivos estáticos (admin do Django)
   - "ingest": roda um conector específico (source obrigatório, tem que
     estar no REGISTRY de ingestion/connectors)
+  - "sync_risk_alerts": roda ingestion/connectors/cemaden_rj_alertas.py
+    (alertas oficiais de risco da Defesa Civil-RJ — não é um conector
+    Station/Reading, por isso não está no REGISTRY normal)
 """
 
 from __future__ import annotations
@@ -28,7 +31,7 @@ from rest_framework.views import APIView
 
 logger = logging.getLogger("ingestion")
 
-ACOES_PERMITIDAS = {"migrate", "collectstatic", "ingest"}
+ACOES_PERMITIDAS = {"migrate", "collectstatic", "ingest", "sync_risk_alerts"}
 
 
 class AdminOpsView(APIView):
@@ -70,6 +73,11 @@ class AdminOpsView(APIView):
                         {"detail": f"source inválido. Disponíveis: {sorted(REGISTRY)}"}, status=400
                     )
                 resultado = get_connector(source).run()
+                saida.write(resultado.summary())
+            elif action == "sync_risk_alerts":
+                from ingestion.connectors import cemaden_rj_alertas
+
+                resultado = cemaden_rj_alertas.sync()
                 saida.write(resultado.summary())
         except Exception as exc:  # noqa: BLE001
             logger.exception("Falha ao executar ação administrativa %r", action)

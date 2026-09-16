@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import AlertEvent, AlertRule, Reading, Source, Station
+from .models import AlertEvent, AlertRule, Reading, RiskAlert, Source, Station
 
 
 @admin.register(Source)
@@ -36,3 +36,10 @@ class AlertEventAdmin(admin.ModelAdmin):
     list_display = ("rule", "station", "value", "triggered_at", "resolved_at")
     list_filter = ("rule__severity",)
     date_hierarchy = "triggered_at"
+
+
+@admin.register(RiskAlert)
+class RiskAlertAdmin(admin.ModelAdmin):
+    list_display = ("tipo", "redec", "municipio", "risco", "atualizado_em", "ingested_at")
+    list_filter = ("tipo", "risco", "redec")
+    search_fields = ("municipio", "redec")

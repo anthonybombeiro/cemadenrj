@@ -75,6 +75,58 @@ export async function fetchPrecipitacao(): Promise<PrecipitacaoStation[]> {
   return getJson<PrecipitacaoStation[]>("/stations/precipitacao/");
 }
 
+export type RiskAlertTipo = "hidrologico" | "geologico" | "meteorologico" | "incendio";
+export type RiskLevel = "muito_baixo" | "baixo" | "moderado" | "alto" | "muito_alto";
+
+export type RiskAlert = {
+  id: number;
+  tipo: RiskAlertTipo;
+  redec: string;
+  municipio: string;
+  risco: RiskLevel;
+  numero_externo: string;
+  responsavel: string;
+  criado_em: string | null;
+  atualizado_em: string | null;
+  fonte: string;
+};
+
+/** Cores oficiais usadas pela própria Defesa Civil-RJ no painel de alertas
+ * (achadas em `/integracao/envia/cemaden/`, seção "Legenda") — mantém aqui
+ * pra qualquer operador que já conhece o painel legado reconhecer de cara. */
+export const RISK_LEVEL_COLORS: Record<RiskLevel, string> = {
+  muito_baixo: "#28a745",
+  baixo: "#ffff19",
+  moderado: "#ffc107",
+  alto: "#bd2130",
+  muito_alto: "#6f42c1",
+};
+
+export const RISK_LEVEL_LABELS: Record<RiskLevel, string> = {
+  muito_baixo: "Muito baixo",
+  baixo: "Baixo",
+  moderado: "Moderado",
+  alto: "Alto",
+  muito_alto: "Muito alto",
+};
+
+export const RISK_ALERT_TIPO_LABELS: Record<RiskAlertTipo, string> = {
+  hidrologico: "Aviso Hidrológico",
+  geologico: "Aviso Geológico",
+  meteorologico: "Severidade Meteorológica",
+  incendio: "Risco de Incêndio Florestal",
+};
+
+export async function fetchRiskAlerts(
+  tipo: RiskAlertTipo,
+  escopo?: "redec" | "municipio",
+): Promise<RiskAlert[]> {
+  const params = new URLSearchParams({ tipo, limit: "200" });
+  if (escopo) params.set("escopo", escopo);
+  const data = await getJson<Paginated<RiskAlert> | RiskAlert[]>(`/risk-alerts/?${params}`);
+  return Array.isArray(data) ? data : data.results;
+}
+
 export const READING_TYPE_LABELS: Record<string, string> = {
   chuva_mm: "Chuva acumulada (mm)",
   nivel_m: "Nível do rio (m)",

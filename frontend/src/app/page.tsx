@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
 
+import AlertsPanel from "@/components/AlertsPanel";
 import DataTable, { METEOROLOGICAL_READING_TYPES } from "@/components/DataTable";
 import PrecipitationTable from "@/components/PrecipitationTable";
 import {
@@ -20,7 +21,7 @@ const MapView = dynamic(() => import("@/components/MapView"), {
   ),
 });
 
-type ViewMode = "mapa" | "precipitacao" | "meteorologico";
+type ViewMode = "mapa" | "precipitacao" | "meteorologico" | "alertas";
 
 export default function HomePage() {
   const [stations, setStations] = useState<Station[]>([]);
@@ -143,67 +144,78 @@ export default function HomePage() {
           >
             Dados Meteorológicos
           </button>
+          <button
+            type="button"
+            onClick={() => setViewMode("alertas")}
+            className={`border-l border-gray-300 px-3 py-1.5 text-sm font-medium ${
+              viewMode === "alertas" ? "bg-blue-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"
+            }`}
+          >
+            Alertas Ativos
+          </button>
         </div>
       </header>
 
       <div className="flex flex-1 flex-col overflow-hidden md:flex-row">
-        <aside className="flex flex-wrap gap-3 border-b border-gray-200 bg-white p-3 md:w-64 md:flex-col md:border-b-0 md:border-r">
-          <div className="flex-1 md:flex-none">
-            <label className="block text-xs font-medium text-gray-500">Município</label>
-            <select
-              className="mt-1 w-full rounded border border-gray-300 p-1.5 text-sm"
-              value={municipalityFilter}
-              onChange={(e) => setMunicipalityFilter(e.target.value)}
-            >
-              <option value="">Todos</option>
-              {municipalities.map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="flex-1 md:flex-none">
-            <label className="block text-xs font-medium text-gray-500">Tipo de estação</label>
-            <select
-              className="mt-1 w-full rounded border border-gray-300 p-1.5 text-sm"
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value)}
-            >
-              <option value="">Todos</option>
-              {Object.entries(STATION_TYPE_LABELS).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="w-full text-xs text-gray-500 md:mt-4">
-            {viewMode === "precipitacao"
-              ? precipitacaoLoading
-                ? "Carregando precipitação…"
-                : `${filteredPrecipitacao.length} estações pluviométricas`
-              : viewMode === "meteorologico"
-                ? loading
-                  ? "Carregando estações…"
-                  : `${meteorologicalStations.length} estações meteorológicas`
-                : loading
-                  ? "Carregando estações…"
-                  : `${filteredStations.length} de ${stations.length} estações`}
-          </div>
-          {error && (
-            <div className="w-full rounded bg-red-50 p-2 text-xs text-red-600">
-              Não foi possível carregar dados da API ({error}). Verifique se o backend está rodando.
+        {viewMode !== "alertas" && (
+          <aside className="flex flex-wrap gap-3 border-b border-gray-200 bg-white p-3 md:w-64 md:flex-col md:border-b-0 md:border-r">
+            <div className="flex-1 md:flex-none">
+              <label className="block text-xs font-medium text-gray-500">Município</label>
+              <select
+                className="mt-1 w-full rounded border border-gray-300 p-1.5 text-sm"
+                value={municipalityFilter}
+                onChange={(e) => setMunicipalityFilter(e.target.value)}
+              >
+                <option value="">Todos</option>
+                {municipalities.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
             </div>
-          )}
-          {precipitacaoError && (
-            <div className="w-full rounded bg-red-50 p-2 text-xs text-red-600">
-              Não foi possível carregar precipitação ({precipitacaoError}).
+
+            <div className="flex-1 md:flex-none">
+              <label className="block text-xs font-medium text-gray-500">Tipo de estação</label>
+              <select
+                className="mt-1 w-full rounded border border-gray-300 p-1.5 text-sm"
+                value={typeFilter}
+                onChange={(e) => setTypeFilter(e.target.value)}
+              >
+                <option value="">Todos</option>
+                {Object.entries(STATION_TYPE_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
             </div>
-          )}
-        </aside>
+
+            <div className="w-full text-xs text-gray-500 md:mt-4">
+              {viewMode === "precipitacao"
+                ? precipitacaoLoading
+                  ? "Carregando precipitação…"
+                  : `${filteredPrecipitacao.length} estações pluviométricas`
+                : viewMode === "meteorologico"
+                  ? loading
+                    ? "Carregando estações…"
+                    : `${meteorologicalStations.length} estações meteorológicas`
+                  : loading
+                    ? "Carregando estações…"
+                    : `${filteredStations.length} de ${stations.length} estações`}
+            </div>
+            {error && (
+              <div className="w-full rounded bg-red-50 p-2 text-xs text-red-600">
+                Não foi possível carregar dados da API ({error}). Verifique se o backend está rodando.
+              </div>
+            )}
+            {precipitacaoError && (
+              <div className="w-full rounded bg-red-50 p-2 text-xs text-red-600">
+                Não foi possível carregar precipitação ({precipitacaoError}).
+              </div>
+            )}
+          </aside>
+        )}
 
         <main className="relative flex-1 overflow-hidden">
           {viewMode === "mapa" && <MapView stations={filteredStations} />}
@@ -211,6 +223,7 @@ export default function HomePage() {
           {viewMode === "meteorologico" && (
             <DataTable stations={filteredStations} readingTypes={METEOROLOGICAL_READING_TYPES} />
           )}
+          {viewMode === "alertas" && <AlertsPanel />}
         </main>
       </div>
     </div>
