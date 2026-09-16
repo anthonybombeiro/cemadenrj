@@ -266,6 +266,12 @@ export default function AlertsPanel() {
         <>
           <h3 className="mb-2 text-sm font-semibold text-gray-700">Por REDEC (regional de Defesa Civil)</h3>
           <RedecGrid alerts={redecAlerts} municipioAlerts={municipioAlerts} tipo={tipo} />
+          <RiskChoroplethMap
+            tipo={tipo}
+            redecAlerts={redecAlerts}
+            municipioAlerts={municipioAlerts}
+            municipioRedecMap={municipioRedecMap}
+          />
           {temGranularidadeMunicipal && (
             <MunicipioTable
               alerts={municipioAlerts}
@@ -276,12 +282,6 @@ export default function AlertsPanel() {
               }
             />
           )}
-          <RiskChoroplethMap
-            tipo={tipo}
-            redecAlerts={redecAlerts}
-            municipioAlerts={municipioAlerts}
-            municipioRedecMap={municipioRedecMap}
-          />
         </>
       )}
 

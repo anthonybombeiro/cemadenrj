@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import AlertsPanel from "@/components/AlertsPanel";
 import DataTable, { METEOROLOGICAL_READING_TYPES } from "@/components/DataTable";
 import PrecipitationTable from "@/components/PrecipitationTable";
+import RiscosOverviewPanel from "@/components/RiscosOverviewPanel";
 import {
   fetchPrecipitacao,
   fetchStations,
@@ -21,7 +22,7 @@ const MapView = dynamic(() => import("@/components/MapView"), {
   ),
 });
 
-type ViewMode = "mapa" | "precipitacao" | "meteorologico" | "alertas";
+type ViewMode = "mapa" | "precipitacao" | "meteorologico" | "alertas" | "riscos";
 
 export default function HomePage() {
   const [stations, setStations] = useState<Station[]>([]);
@@ -153,11 +154,20 @@ export default function HomePage() {
           >
             Alertas Ativos
           </button>
+          <button
+            type="button"
+            onClick={() => setViewMode("riscos")}
+            className={`border-l border-gray-300 px-3 py-1.5 text-sm font-medium ${
+              viewMode === "riscos" ? "bg-blue-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"
+            }`}
+          >
+            Riscos
+          </button>
         </div>
       </header>
 
       <div className="flex flex-1 flex-col overflow-hidden md:flex-row">
-        {viewMode !== "alertas" && (
+        {viewMode !== "alertas" && viewMode !== "riscos" && (
           <aside className="flex flex-wrap gap-3 border-b border-gray-200 bg-white p-3 md:w-64 md:flex-col md:border-b-0 md:border-r">
             <div className="flex-1 md:flex-none">
               <label className="block text-xs font-medium text-gray-500">Município</label>
@@ -224,6 +234,7 @@ export default function HomePage() {
             <DataTable stations={filteredStations} readingTypes={METEOROLOGICAL_READING_TYPES} />
           )}
           {viewMode === "alertas" && <AlertsPanel />}
+          {viewMode === "riscos" && <RiscosOverviewPanel />}
         </main>
       </div>
     </div>
