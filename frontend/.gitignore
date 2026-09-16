@@ -32,6 +32,10 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# .env.production não tem segredo (só a URL pública da API) — precisa estar
+# versionado pra `npm run build` gerar o site certo em CI/outra máquina.
+!.env.production
+!.env.example
 
 # vercel
 .vercel
