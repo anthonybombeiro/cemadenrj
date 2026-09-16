@@ -114,7 +114,7 @@ export default function RiskChoroplethMap({
   };
 
   return (
-    <div className={compact ? "" : "mt-4"}>
+    <div className={compact ? "flex h-full min-h-0 flex-col" : "mt-4"}>
       {!compact && <h3 className="mb-2 text-sm font-semibold text-gray-700">Mapa por município</h3>}
 
       {!compact && (
@@ -163,7 +163,12 @@ export default function RiskChoroplethMap({
 
       <svg
         viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
-        className={compact ? "w-full rounded border border-gray-200 bg-white" : "w-full max-w-2xl rounded border border-gray-200 bg-white"}
+        preserveAspectRatio="xMidYMid meet"
+        className={
+          compact
+            ? "min-h-0 w-full flex-1 rounded border border-gray-200 bg-white"
+            : "w-full max-w-2xl rounded border border-gray-200 bg-white"
+        }
         role="img"
         aria-label={`Mapa do Rio de Janeiro por município — ${tipo}`}
       >
