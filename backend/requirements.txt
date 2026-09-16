@@ -1,4 +1,8 @@
-Django==5.0.9
+# Django 4.2 LTS (não 5.x): o HostGator de produção roda Python 3.9 via
+# Passenger (confirmado por tentativa real de instalação — Django 5.0 exige
+# Python 3.10+ e falha com "No matching distribution found"). 4.2 é a LTS
+# mais recente compatível e recebe patches de segurança até abr/2026.
+Django==4.2.30
 djangorestframework==3.15.2
 django-cors-headers==4.4.0
 dj-database-url==2.2.0
@@ -10,9 +14,11 @@ psycopg2-binary==2.9.9
 PyMySQL==1.1.1
 requests==2.32.3
 python-dotenv==1.0.1
+# celery/redis: só o pacote precisa existir (config/__init__.py importa
+# config.celery no boot do Django). Não roda worker/beat no HostGator —
+# ingestão periódica é via Cron Jobs do cPanel chamando /api/admin/run/.
 celery==5.4.0
 redis==5.0.8
-gunicorn==22.0.0
 
 # Conversão de hexágonos H3 para lat/lon (ver ingestion/connectors/rio_chuva_bairro.py)
 h3==4.1.2
