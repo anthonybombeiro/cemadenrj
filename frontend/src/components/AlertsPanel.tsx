@@ -101,7 +101,6 @@ function MunicipioTable({ alerts, emptyMessage }: { alerts: RiskAlert[]; emptyMe
               >
                 Risco{sortAsc ? " ▲" : " ▼"}
               </th>
-              <th className="whitespace-nowrap px-3 py-2">Responsável</th>
               <th className="whitespace-nowrap px-3 py-2">Atualizado em</th>
             </tr>
           </thead>
@@ -120,7 +119,6 @@ function MunicipioTable({ alerts, emptyMessage }: { alerts: RiskAlert[]; emptyMe
                       {RISK_LEVEL_LABELS[a.risco]}
                     </span>
                   </td>
-                  <td className="whitespace-nowrap px-3 py-1.5 text-gray-500">{a.responsavel || "—"}</td>
                   <td className="whitespace-nowrap px-3 py-1.5 text-gray-500">
                     {formatTimestamp(a.atualizado_em ?? a.criado_em)}
                   </td>
@@ -222,7 +220,7 @@ export default function AlertsPanel() {
               alerts={municipioAlerts}
               emptyMessage={
                 tipo === "hidrologico"
-                  ? "Nenhum município em risco hidrológico alto no momento — essa lista só aparece a partir do nível \"Alto\"."
+                  ? "Sem dado de município no momento — a fonte oficial desse dado específico é instável e às vezes não responde. Tente recarregar em alguns minutos."
                   : undefined
               }
             />

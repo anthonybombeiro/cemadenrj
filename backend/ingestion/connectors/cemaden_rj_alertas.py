@@ -14,16 +14,29 @@ incêndio florestal):
   - atualizacao_hidro.php           → hidrológico, por REDEC
   - atualizacao_geo.php             → geológico, por REDEC
   - atualizacao_municipio_geo.php   → geológico, por município (sempre os 92)
-  - atualizacao_municipio_hidro.php → hidrológico, por município — MAS só
-    lista município a partir do risco "ALTO" (confirmado pelo usuário, que
-    opera o sistema de verdade). Com todas as REDECs em risco moderado ou
-    menor (setembro/2026), esse endpoint respondeu tanto 200 com corpo vazio
-    (sem `<table>`) quanto 500 Internal Server Error em testes diferentes —
-    parece ser um bug do lado deles quando não há nada a listar, não algo
-    que dá pra evitar daqui. `sync()` trata os dois casos como "sem dado
-    agora" (loga o erro, não deleta nada) em vez de deixar a falha propagar.
-    Quando isso passa a responder 200 com linhas de verdade (município
-    real em ALTO), o parsing funciona normal — e como só listamos quem
+  - atualizacao_municipio_hidro.php → hidrológico, por município. O usuário
+    (que opera o sistema de verdade) descreveu que essa granularidade
+    "passa a existir a partir do risco Alto" — mas quando o fetch
+    finalmente funcionou (ver instabilidade abaixo), a resposta trouxe os
+    92 municípios com níveis variados (inclusive "moderado"), igual ao
+    geológico. Pode ser que a regra operacional de quando isso é
+    RELEVANTE seja a partir de Alto, mesmo a fonte sempre devolvendo tudo
+    — deixamos os 92 disponíveis de qualquer forma, não faz mal mostrar a
+    mais.
+    ATENÇÃO — esse endpoint específico é instável NO SERVIDOR DELES:
+    testado repetidas vezes (com e sem headers de navegador, com curl e
+    com requests) e ele devolve 500 Internal Server Error na maioria das
+    tentativas e 200 com dado real ocasionalmente (~1 em 4), sem relação
+    com headers — mesmo request idêntico alterna entre os dois. O mapa
+    público (`/monitoramento/v2/mapa/`, confirmado com print do usuário
+    mostrando município com cores diferentes dentro de uma mesma REDEC)
+    prova que o dado por-município existe e é usado ao vivo por eles; só
+    esse endpoint específico de integração é que está instável.
+    `_stream_rows` tenta de novo algumas vezes antes de desistir (ver
+    `_MAX_TENTATIVAS`). Mesmo assim pode falhar; `sync()` trata isso como
+    "sem dado agora" (loga o erro, não deleta nada) em vez de deixar a
+    exceção propagar e derrubar a
+    sincronização dos outros 3 tipos de alerta. E como só listamos quem
     está atualmente acima do limiar, `sync()` também apaga registro de
     município que sumiu da resposta (senão um "ALTO" antigo ficaria preso
     pra sempre depois do risco baixar).
@@ -47,6 +60,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import time
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from zoneinfo import ZoneInfo
@@ -135,14 +149,38 @@ class _TableRowParser(HTMLParser):
             self._current_cell.append(data)
 
 
+_HEADERS = {"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"}
+
+# `atualizacao_municipio_hidro.php` especificamente é instável no servidor
+# deles — 500 na maioria das tentativas, 200 com dado real de vez em quando,
+# não relacionado a headers nem a ter ou não município em risco alto (ver
+# docstring do módulo). Tenta de novo antes de desistir.
+_MAX_TENTATIVAS = 5
+_ESPERA_ENTRE_TENTATIVAS_S = 2
+
+
 def _stream_rows(url: str, on_row) -> None:
-    parser = _TableRowParser(on_row)
-    with requests.get(url, timeout=(10, 60), stream=True) as resp:
-        resp.raise_for_status()
-        for chunk in resp.iter_content(chunk_size=1 << 16, decode_unicode=True):
-            if chunk:
-                parser.feed(chunk)
-    parser.close()
+    ultimo_erro: Exception | None = None
+    for tentativa in range(1, _MAX_TENTATIVAS + 1):
+        parser = _TableRowParser(on_row)
+        try:
+            with requests.get(url, headers=_HEADERS, timeout=(10, 60), stream=True) as resp:
+                resp.raise_for_status()
+                for chunk in resp.iter_content(chunk_size=1 << 16, decode_unicode=True):
+                    if chunk:
+                        parser.feed(chunk)
+            parser.close()
+            return
+        except requests.exceptions.HTTPError as exc:
+            ultimo_erro = exc
+            status = exc.response.status_code if exc.response is not None else None
+            if status is not None and status < 500:
+                raise  # erro do lado de cá (4xx) — tentar de novo não ajuda
+            logger.warning("Tentativa %d/%d falhou para %s: %s", tentativa, _MAX_TENTATIVAS, url, exc)
+            if tentativa < _MAX_TENTATIVAS:
+                time.sleep(_ESPERA_ENTRE_TENTATIVAS_S)
+    assert ultimo_erro is not None
+    raise ultimo_erro
 
 
 @dataclass
