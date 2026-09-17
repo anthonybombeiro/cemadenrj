@@ -170,12 +170,19 @@ function MunicipioTable({ alerts, emptyMessage }: { alerts: RiskAlert[]; emptyMe
   );
 }
 
+// Recarrega sozinho enquanto a aba fica aberta — sem isso, quem deixasse o
+// painel aberto numa TV/monitor de operação ficaria vendo dado cada vez
+// mais velho, já que a página só busca de novo se o operador recarregar
+// manualmente.
+const INTERVALO_ATUALIZACAO_MS = 5 * 60 * 1000;
+
 export default function AlertsPanel() {
   const [tipo, setTipo] = useState<RiskAlertTipo>("geologico");
   const [redecAlerts, setRedecAlerts] = useState<RiskAlert[]>([]);
   const [municipioAlerts, setMunicipioAlerts] = useState<RiskAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [atualizadoEm, setAtualizadoEm] = useState<Date | null>(null);
 
   // Município→REDEC não muda entre abas — busca 1x (via geológico, que
   // sempre tem os 92) e reusa pra colorir o mapa de meteorológico/incêndio
@@ -202,25 +209,33 @@ export default function AlertsPanel() {
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setError(null);
-    Promise.all([
-      fetchRiskAlerts(tipo, "redec"),
-      temGranularidadeMunicipal ? fetchRiskAlerts(tipo, "municipio") : Promise.resolve([]),
-    ])
-      .then(([redec, municipio]) => {
-        if (cancelled) return;
-        setRedecAlerts(redec);
-        setMunicipioAlerts(municipio);
-      })
-      .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Erro desconhecido");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+
+    const carregar = (mostrarLoading: boolean) => {
+      if (mostrarLoading) setLoading(true);
+      setError(null);
+      Promise.all([
+        fetchRiskAlerts(tipo, "redec"),
+        temGranularidadeMunicipal ? fetchRiskAlerts(tipo, "municipio") : Promise.resolve([]),
+      ])
+        .then(([redec, municipio]) => {
+          if (cancelled) return;
+          setRedecAlerts(redec);
+          setMunicipioAlerts(municipio);
+          setAtualizadoEm(new Date());
+        })
+        .catch((err) => {
+          if (!cancelled) setError(err instanceof Error ? err.message : "Erro desconhecido");
+        })
+        .finally(() => {
+          if (!cancelled && mostrarLoading) setLoading(false);
+        });
+    };
+
+    carregar(true);
+    const intervalo = setInterval(() => carregar(false), INTERVALO_ATUALIZACAO_MS);
     return () => {
       cancelled = true;
+      clearInterval(intervalo);
     };
   }, [tipo, temGranularidadeMunicipal]);
 
@@ -241,17 +256,24 @@ export default function AlertsPanel() {
         ))}
       </div>
 
-      <div className="mb-3 flex flex-wrap items-center gap-3 text-xs text-gray-500">
-        <span>Legenda (padrão Defesa Civil-RJ):</span>
-        {NIVEIS.map((n) => (
-          <span key={n} className="flex items-center gap-1">
-            <span
-              className="inline-block h-3 w-3 rounded-sm border border-black/10"
-              style={{ backgroundColor: RISK_LEVEL_COLORS[n] }}
-            />
-            {RISK_LEVEL_LABELS[n]}
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3 text-xs text-gray-500">
+        <div className="flex flex-wrap items-center gap-3">
+          <span>Legenda (padrão Defesa Civil-RJ):</span>
+          {NIVEIS.map((n) => (
+            <span key={n} className="flex items-center gap-1">
+              <span
+                className="inline-block h-3 w-3 rounded-sm border border-black/10"
+                style={{ backgroundColor: RISK_LEVEL_COLORS[n] }}
+              />
+              {RISK_LEVEL_LABELS[n]}
+            </span>
+          ))}
+        </div>
+        {atualizadoEm && (
+          <span title="A página busca de novo sozinha a cada 5 minutos">
+            Painel atualizado às {atualizadoEm.toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo" })}
           </span>
-        ))}
+        )}
       </div>
 
       {error && (

@@ -39,6 +39,11 @@ function Legenda() {
   );
 }
 
+// Mesma lógica do AlertsPanel: sem isso, quem deixasse essa aba aberta
+// numa TV/monitor de operação ficaria vendo o mesmo dado parado até
+// recarregar a página na mão.
+const INTERVALO_ATUALIZACAO_MS = 5 * 60 * 1000;
+
 export default function RiscosOverviewPanel() {
   const [dados, setDados] = useState<Record<RiskAlertTipo, DadosPorTipo>>({
     hidrologico: { redec: [], municipio: [] },
@@ -49,37 +54,45 @@ export default function RiscosOverviewPanel() {
   const [municipioRedecMap, setMunicipioRedecMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [atualizadoEm, setAtualizadoEm] = useState<Date | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setError(null);
 
-    Promise.all(
-      TIPOS.map((tipo) =>
-        Promise.all([
-          fetchRiskAlerts(tipo, "redec"),
-          COM_GRANULARIDADE_MUNICIPAL.includes(tipo) ? fetchRiskAlerts(tipo, "municipio") : Promise.resolve([]),
-        ]).then(([redec, municipio]) => [tipo, { redec, municipio }] as const),
-      ),
-    )
-      .then((entradas) => {
-        if (cancelled) return;
-        const proximo = Object.fromEntries(entradas) as Record<RiskAlertTipo, DadosPorTipo>;
-        setDados(proximo);
-        const mapa: Record<string, string> = {};
-        for (const a of proximo.geologico.municipio) mapa[normalizeMunicipioName(a.municipio)] = a.redec;
-        setMunicipioRedecMap(mapa);
-      })
-      .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Erro desconhecido");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+    const carregar = (mostrarLoading: boolean) => {
+      if (mostrarLoading) setLoading(true);
+      setError(null);
 
+      Promise.all(
+        TIPOS.map((tipo) =>
+          Promise.all([
+            fetchRiskAlerts(tipo, "redec"),
+            COM_GRANULARIDADE_MUNICIPAL.includes(tipo) ? fetchRiskAlerts(tipo, "municipio") : Promise.resolve([]),
+          ]).then(([redec, municipio]) => [tipo, { redec, municipio }] as const),
+        ),
+      )
+        .then((entradas) => {
+          if (cancelled) return;
+          const proximo = Object.fromEntries(entradas) as Record<RiskAlertTipo, DadosPorTipo>;
+          setDados(proximo);
+          const mapa: Record<string, string> = {};
+          for (const a of proximo.geologico.municipio) mapa[normalizeMunicipioName(a.municipio)] = a.redec;
+          setMunicipioRedecMap(mapa);
+          setAtualizadoEm(new Date());
+        })
+        .catch((err) => {
+          if (!cancelled) setError(err instanceof Error ? err.message : "Erro desconhecido");
+        })
+        .finally(() => {
+          if (!cancelled && mostrarLoading) setLoading(false);
+        });
+    };
+
+    carregar(true);
+    const intervalo = setInterval(() => carregar(false), INTERVALO_ATUALIZACAO_MS);
     return () => {
       cancelled = true;
+      clearInterval(intervalo);
     };
   }, []);
 
@@ -93,6 +106,9 @@ export default function RiscosOverviewPanel() {
       <h2 className="text-sm font-semibold text-gray-900 landscape:hidden">Riscos — visão geral</h2>
       <p className="mb-2 text-xs text-gray-500 landscape:hidden">
         As 4 camadas de alerta da Defesa Civil-RJ lado a lado, cada uma com sua legenda.
+        {atualizadoEm && (
+          <> Atualizado às {atualizadoEm.toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo" })}.</>
+        )}
       </p>
 
       {error && (
