@@ -166,8 +166,8 @@ _HEADERS = {"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*
 # deles — 500 na maioria das tentativas, 200 com dado real de vez em quando,
 # não relacionado a headers nem a ter ou não município em risco alto (ver
 # docstring do módulo). Tenta de novo antes de desistir.
-_MAX_TENTATIVAS = 5
-_ESPERA_ENTRE_TENTATIVAS_S = 2
+_MAX_TENTATIVAS = 10
+_ESPERA_ENTRE_TENTATIVAS_S = 1
 
 
 def _stream_rows(url: str, on_row) -> None:
