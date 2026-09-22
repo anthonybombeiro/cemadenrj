@@ -11,6 +11,7 @@ import {
   fetchPrecipitacao,
   fetchStations,
   PrecipitacaoStation,
+  SOURCE_LABELS,
   STATION_TYPE_LABELS,
   Station,
 } from "@/lib/api";
@@ -30,6 +31,7 @@ export default function HomePage() {
   const [error, setError] = useState<string | null>(null);
   const [municipalityFilter, setMunicipalityFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
+  const [sourceFilter, setSourceFilter] = useState("");
   const [viewMode, setViewMode] = useState<ViewMode>("mapa");
 
   const [precipitacao, setPrecipitacao] = useState<PrecipitacaoStation[]>([]);
@@ -84,19 +86,31 @@ export default function HomePage() {
     [stations],
   );
 
+  const sources = useMemo(
+    () => Array.from(new Set(stations.map((s) => s.source).filter(Boolean))).sort(),
+    [stations],
+  );
+
   const filteredStations = useMemo(
     () =>
       stations.filter(
         (s) =>
           (!municipalityFilter || s.municipality === municipalityFilter) &&
-          (!typeFilter || s.station_type === typeFilter),
+          (!typeFilter || s.station_type === typeFilter) &&
+          (!sourceFilter || s.source === sourceFilter),
       ),
-    [stations, municipalityFilter, typeFilter],
+    [stations, municipalityFilter, typeFilter, sourceFilter],
   );
 
   const filteredPrecipitacao = useMemo(
-    () => precipitacao.filter((s) => !municipalityFilter || s.municipality === municipalityFilter),
-    [precipitacao, municipalityFilter],
+    () =>
+      precipitacao.filter(
+        (s) =>
+          (!municipalityFilter || s.municipality === municipalityFilter) &&
+          (!typeFilter || s.station_type === typeFilter) &&
+          (!sourceFilter || s.source === sourceFilter),
+      ),
+    [precipitacao, municipalityFilter, typeFilter, sourceFilter],
   );
 
   const meteorologicalTypeSet = useMemo(() => new Set(METEOROLOGICAL_READING_TYPES), []);
@@ -201,6 +215,22 @@ export default function HomePage() {
               </select>
             </div>
 
+            <div className="flex-1 md:flex-none">
+              <label className="block text-xs font-medium text-gray-500">Fonte</label>
+              <select
+                className="mt-1 w-full rounded border border-gray-300 p-1.5 text-sm"
+                value={sourceFilter}
+                onChange={(e) => setSourceFilter(e.target.value)}
+              >
+                <option value="">Todas</option>
+                {sources.map((s) => (
+                  <option key={s} value={s}>
+                    {SOURCE_LABELS[s] ?? s}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <div className="w-full text-xs text-gray-500 md:mt-4">
               {viewMode === "precipitacao"
                 ? precipitacaoLoading
@@ -231,7 +261,11 @@ export default function HomePage() {
           {viewMode === "mapa" && <MapView stations={filteredStations} />}
           {viewMode === "precipitacao" && <PrecipitationTable stations={filteredPrecipitacao} />}
           {viewMode === "meteorologico" && (
-            <DataTable stations={filteredStations} readingTypes={METEOROLOGICAL_READING_TYPES} />
+            <DataTable
+              stations={filteredStations}
+              readingTypes={METEOROLOGICAL_READING_TYPES}
+              defaultSortKey="temperatura_c"
+            />
           )}
           {viewMode === "alertas" && <AlertsPanel />}
           {viewMode === "riscos" && <RiscosOverviewPanel />}

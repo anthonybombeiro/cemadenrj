@@ -21,6 +21,14 @@ function formatTimestamp(iso: string): string {
   }
 }
 
+// Guardamos vento em m/s (SI) no banco; exibimos em km/h a pedido do usuário.
+const WIND_READING_TYPES = new Set(["vento_ms", "vento_rajada_ms"]);
+
+function formatReadingValue(readingType: string, value: number): number {
+  const emKmh = WIND_READING_TYPES.has(readingType) ? value * 3.6 : value;
+  return Math.round(emKmh * 10) / 10;
+}
+
 export default function MapView({ stations }: { stations: Station[] }) {
   return (
     <MapContainer center={RJ_CENTER} zoom={8} className="h-full w-full" scrollWheelZoom>
@@ -57,7 +65,7 @@ export default function MapView({ stations }: { stations: Station[] }) {
                       <span className="font-medium">
                         {READING_TYPE_LABELS[r.reading_type] ?? r.reading_type}:
                       </span>{" "}
-                      {Math.round(r.value * 100) / 100}{" "}
+                      {formatReadingValue(r.reading_type, r.value)}{" "}
                       <span className="text-gray-400">({formatTimestamp(r.timestamp)})</span>
                     </li>
                   ))}

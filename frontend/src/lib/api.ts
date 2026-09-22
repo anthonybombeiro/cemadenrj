@@ -55,6 +55,7 @@ export async function fetchStationReadings(stationId: number): Promise<Reading[]
 export type PrecipitacaoStation = {
   id: number;
   source: string;
+  station_type: string;
   external_id: string;
   name: string;
   municipality: string;
@@ -148,8 +149,11 @@ export const READING_TYPE_LABELS: Record<string, string> = {
   nivel_m: "Nível do rio (m)",
   temperatura_c: "Temperatura (°C)",
   umidade_pct: "Umidade relativa (%)",
-  vento_ms: "Vento (m/s)",
-  vento_rajada_ms: "Rajada de vento (m/s)",
+  // Chave continua "vento_ms" (é assim que o backend guarda, em m/s — SI
+  // padrão) mas exibimos em km/h a pedido do usuário; a conversão fica em
+  // DataTable.tsx/MapView.tsx, só na hora de formatar pra tela.
+  vento_ms: "Vento (km/h)",
+  vento_rajada_ms: "Rajada de vento (km/h)",
   vento_dir_graus: "Direção do vento (°)",
   mare_m: "Maré (m)",
 };
@@ -160,4 +164,13 @@ export const STATION_TYPE_LABELS: Record<string, string> = {
   meteorologica: "Meteorológica",
   mare: "Maré/Oceanográfica",
   outro: "Outro",
+};
+
+export const SOURCE_LABELS: Record<string, string> = {
+  inmet: "INMET",
+  cemaden_nacional: "CEMADEN Nacional",
+  alerta_rio: "Alerta Rio/GeoRio",
+  wunderground: "Wunderground",
+  plugfield: "Plugfield",
+  rio_chuva_bairro: "Chuva por Bairro (Rio)",
 };

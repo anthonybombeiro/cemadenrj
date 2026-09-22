@@ -105,6 +105,7 @@ class StationViewSet(viewsets.ReadOnlyModelViewSet):
             entry = {
                 "id": station.id,
                 "source": slug,
+                "station_type": station.station_type,
                 "external_id": station.external_id,
                 "name": station.name,
                 "municipality": station.municipality,

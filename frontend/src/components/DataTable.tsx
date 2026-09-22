@@ -35,22 +35,33 @@ function formatTimestamp(iso: string): string {
   }
 }
 
-function formatValue(value: number): string {
-  return (Math.round(value * 100) / 100).toString();
+// Guardamos vento em m/s (SI) no banco; exibimos em km/h a pedido do
+// usuário. Conversão só de exibição — não afeta ordenação (transformação
+// monotônica, a ordem relativa é a mesma nas duas unidades).
+const WIND_READING_TYPES = new Set(["vento_ms", "vento_rajada_ms"]);
+
+function formatReadingValue(readingType: string, value: number): string {
+  const emKmh = WIND_READING_TYPES.has(readingType) ? value * 3.6 : value;
+  return (Math.round(emKmh * 10) / 10).toString();
 }
 
-type SortKey = "name" | "municipality" | "source" | "updated";
+const FIXED_SORT_KEYS = new Set(["name", "municipality", "source", "updated"]);
 
 export default function DataTable({
   stations,
   readingTypes,
+  defaultSortKey = "municipality",
 }: {
   stations: Station[];
   /** Restringe colunas e estações exibidas a esses tipos de leitura (default: todos). */
   readingTypes?: string[];
+  /** Coluna usada pra ordenar de cara — "name"/"municipality"/"source"/"updated"
+   * ou um tipo de leitura (ex: "temperatura_c"). Colunas de valor começam
+   * ordenadas do maior pro menor; as demais, A→Z. */
+  defaultSortKey?: string;
 }) {
-  const [sortKey, setSortKey] = useState<SortKey>("municipality");
-  const [sortAsc, setSortAsc] = useState(true);
+  const [sortKey, setSortKey] = useState<string>(defaultSortKey);
+  const [sortAsc, setSortAsc] = useState(!FIXED_SORT_KEYS.has(defaultSortKey) ? false : true);
 
   const allowedTypes = useMemo(() => (readingTypes ? new Set(readingTypes) : null), [readingTypes]);
 
@@ -73,30 +84,37 @@ export default function DataTable({
   const sorted = useMemo(() => {
     const copy = [...filteredStations];
     copy.sort((a, b) => {
-      let cmp = 0;
-      if (sortKey === "name") cmp = a.name.localeCompare(b.name);
-      else if (sortKey === "municipality") cmp = a.municipality.localeCompare(b.municipality);
-      else if (sortKey === "source") cmp = a.source.localeCompare(b.source);
-      else if (sortKey === "updated") {
+      if (sortKey === "name") return sortAsc ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name);
+      if (sortKey === "municipality")
+        return sortAsc ? a.municipality.localeCompare(b.municipality) : b.municipality.localeCompare(a.municipality);
+      if (sortKey === "source") return sortAsc ? a.source.localeCompare(b.source) : b.source.localeCompare(a.source);
+      if (sortKey === "updated") {
         const ua = mostRecentUpdate(a) ?? "";
         const ub = mostRecentUpdate(b) ?? "";
-        cmp = ua.localeCompare(ub);
+        return sortAsc ? ua.localeCompare(ub) : ub.localeCompare(ua);
       }
-      return sortAsc ? cmp : -cmp;
+      // Coluna de valor (ex: temperatura_c) — quem não tem leitura desse
+      // tipo vai sempre pro fim, não importa a direção.
+      const va = a.latest_readings.find((r) => r.reading_type === sortKey)?.value;
+      const vb = b.latest_readings.find((r) => r.reading_type === sortKey)?.value;
+      if (va == null && vb == null) return 0;
+      if (va == null) return 1;
+      if (vb == null) return -1;
+      return sortAsc ? va - vb : vb - va;
     });
     return copy;
   }, [filteredStations, sortKey, sortAsc]);
 
-  const toggleSort = (key: SortKey) => {
+  const toggleSort = (key: string) => {
     if (key === sortKey) {
       setSortAsc((v) => !v);
     } else {
       setSortKey(key);
-      setSortAsc(true);
+      setSortAsc(!FIXED_SORT_KEYS.has(key) ? false : true);
     }
   };
 
-  const arrow = (key: SortKey) => (key === sortKey ? (sortAsc ? " ▲" : " ▼") : "");
+  const arrow = (key: string) => (key === sortKey ? (sortAsc ? " ▲" : " ▼") : "");
 
   return (
     <div className="h-full w-full overflow-auto bg-white">
@@ -114,8 +132,13 @@ export default function DataTable({
             </th>
             <th className="whitespace-nowrap px-3 py-2">Tipo</th>
             {columns.map((c) => (
-              <th key={c} className="whitespace-nowrap px-3 py-2">
+              <th
+                key={c}
+                className="cursor-pointer select-none whitespace-nowrap px-3 py-2"
+                onClick={() => toggleSort(c)}
+              >
                 {READING_TYPE_LABELS[c] ?? c}
+                {arrow(c)}
               </th>
             ))}
             <th className="cursor-pointer select-none whitespace-nowrap px-3 py-2" onClick={() => toggleSort("updated")}>
@@ -137,7 +160,7 @@ export default function DataTable({
                 </td>
                 {columns.map((c) => (
                   <td key={c} className="whitespace-nowrap px-3 py-1.5 text-gray-800">
-                    {readingsByType[c] ? formatValue(readingsByType[c].value) : "—"}
+                    {readingsByType[c] ? formatReadingValue(c, readingsByType[c].value) : "—"}
                   </td>
                 ))}
                 <td className="whitespace-nowrap px-3 py-1.5 text-gray-500">
