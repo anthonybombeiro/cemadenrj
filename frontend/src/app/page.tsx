@@ -25,6 +25,14 @@ const MapView = dynamic(() => import("@/components/MapView"), {
 
 type ViewMode = "mapa" | "precipitacao" | "meteorologico" | "alertas" | "riscos";
 
+const VIEW_MODES: { key: ViewMode; label: string }[] = [
+  { key: "mapa", label: "Mapa" },
+  { key: "precipitacao", label: "Precipitação" },
+  { key: "meteorologico", label: "Dados Meteorológicos" },
+  { key: "alertas", label: "Alertas Ativos" },
+  { key: "riscos", label: "Riscos" },
+];
+
 export default function HomePage() {
   const [stations, setStations] = useState<Station[]>([]);
   const [loading, setLoading] = useState(true);
@@ -122,8 +130,8 @@ export default function HomePage() {
 
   return (
     <div className="flex h-screen flex-col">
-      <header className="flex flex-wrap items-start justify-between gap-3 border-b border-gray-200 bg-white px-4 py-3 shadow-sm">
-        <div>
+      <header className="flex flex-col gap-3 border-b border-gray-200 bg-white px-4 py-3 shadow-sm">
+        <div className="min-w-0">
           <h1 className="text-lg font-bold text-gray-900">Painel Meteorológico/Hidrológico — CEMADEN-RJ</h1>
           <p className="text-xs text-gray-500">
             Agregação de estações públicas (INMET, CEMADEN nacional, Alerta Rio/GeoRio, Wunderground, COR/Escritório
@@ -131,52 +139,22 @@ export default function HomePage() {
             decisão. <strong>Não substitui os canais oficiais de emissão de alerta da Defesa Civil.</strong>
           </p>
         </div>
-        <div className="flex shrink-0 overflow-hidden rounded border border-gray-300">
-          <button
-            type="button"
-            onClick={() => setViewMode("mapa")}
-            className={`px-3 py-1.5 text-sm font-medium ${
-              viewMode === "mapa" ? "bg-blue-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"
-            }`}
-          >
-            Mapa
-          </button>
-          <button
-            type="button"
-            onClick={() => setViewMode("precipitacao")}
-            className={`border-l border-gray-300 px-3 py-1.5 text-sm font-medium ${
-              viewMode === "precipitacao" ? "bg-blue-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"
-            }`}
-          >
-            Precipitação
-          </button>
-          <button
-            type="button"
-            onClick={() => setViewMode("meteorologico")}
-            className={`border-l border-gray-300 px-3 py-1.5 text-sm font-medium ${
-              viewMode === "meteorologico" ? "bg-blue-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"
-            }`}
-          >
-            Dados Meteorológicos
-          </button>
-          <button
-            type="button"
-            onClick={() => setViewMode("alertas")}
-            className={`border-l border-gray-300 px-3 py-1.5 text-sm font-medium ${
-              viewMode === "alertas" ? "bg-blue-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"
-            }`}
-          >
-            Alertas Ativos
-          </button>
-          <button
-            type="button"
-            onClick={() => setViewMode("riscos")}
-            className={`border-l border-gray-300 px-3 py-1.5 text-sm font-medium ${
-              viewMode === "riscos" ? "bg-blue-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"
-            }`}
-          >
-            Riscos
-          </button>
+        {/* Pílulas com quebra de linha (igual à Alertas Ativos) em vez de uma
+            fileira única de botões unidos — a fileira única não cabia em
+            telas de celular e empurrava a página inteira para o lado. */}
+        <div className="flex flex-wrap gap-2">
+          {VIEW_MODES.map(({ key, label }) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setViewMode(key)}
+              className={`rounded-full px-3 py-1.5 text-sm font-medium ${
+                viewMode === key ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
       </header>
 
