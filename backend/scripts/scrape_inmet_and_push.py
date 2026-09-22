@@ -213,7 +213,17 @@ def main() -> int:
     resp = requests.post(
         ingest_url,
         json={"source_slug": "inmet", "readings": readings},
-        headers={"X-Ingest-Secret": ingest_secret},
+        headers={
+            "X-Ingest-Secret": ingest_secret,
+            # Sem isso o ModSecurity do HostGator devolve 406 — o conjunto de
+            # regras padrão bloqueia o User-Agent default do requests
+            # ("python-requests/x.y") por parecer bot. Confirmado testando os
+            # dois lado a lado contra a produção: só muda o header.
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+            ),
+        },
         timeout=60,
     )
     print(f"POST {ingest_url} -> {resp.status_code}: {resp.text[:500]}")
