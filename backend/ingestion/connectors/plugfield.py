@@ -54,7 +54,7 @@ from django.conf import settings
 
 from core.models import Reading, Station
 
-from .base import BaseConnector
+from .base import BaseConnector, bucket_from_running_daily
 
 logger = logging.getLogger("ingestion")
 
@@ -186,7 +186,14 @@ class PlugfieldConnector(BaseConnector):
 
         add(Reading.ReadingType.TEMPERATURA_C, dashboard.get("temp"))
         add(Reading.ReadingType.UMIDADE_PCT, dashboard.get("humi"))
-        add(Reading.ReadingType.CHUVA_MM, dashboard.get("rainDay"))
+        # rainDay é corrido desde a meia-noite local, não um valor
+        # por-janela — convertido pra "balde" (chuva NESSE intervalo), pra
+        # ficar escalonado igual às fontes tipo "balde" (ver
+        # bucket_from_running_daily em base.py e mesmo tratamento em
+        # wunderground.py — pedido do usuário, 2026-09-23).
+        rain_day = dashboard.get("rainDay")
+        if rain_day is not None:
+            add(Reading.ReadingType.CHUVA_MM, bucket_from_running_daily("plugfield", external_id, float(rain_day)))
         add(Reading.ReadingType.VENTO_DIR_GRAUS, dashboard.get("dire"))
 
         # wind/winb vêm em km/h (speed_unit da conta) — convertendo para m/s.

@@ -40,6 +40,52 @@ from dataclasses import dataclass, field
 logger = logging.getLogger("ingestion")
 
 
+def bucket_from_running_daily(source_slug: str, external_id: str, valor_atual_hoje: float) -> float:
+    """Deriva um valor tipo "balde" (chuva NESSE intervalo) a partir de um
+    total corrido desde a meia-noite local (ex: Wunderground `precipTotal`,
+    Plugfield `rainDay`) — `valor_atual_hoje` é esse total como a fonte
+    relata AGORA.
+
+    Pedido do usuário (2026-09-23): fontes "running_daily" só apareciam com
+    UM dado na tabela de Precipitação (só "Hoje") porque o resto do nosso
+    pipeline assume que "chuva_mm" é sempre um valor por-janela, somável —
+    diferenciar aqui, na ingestão, deixa o dado já guardado "escalonado
+    igual às demais" (consulta futura direta no banco funciona igual pra
+    qualquer fonte, sem precisar saber que uma fonte é running_daily).
+
+    IMPORTANTE: compara com a SOMA do que já guardamos HOJE pra essa
+    estação (não com "a última leitura guardada") — depois da primeira
+    conversão, o que fica salvo já é um balde, não o total corrido; comparar
+    com o valor bruto de outra leitura já comparada geraria um delta sem
+    sentido. Vantagens dessa abordagem:
+      - Autocorrige coleta perdida: se um ciclo de cron falhou, o próximo
+        balde absorve naturalmente a diferença acumulada.
+      - Vira o dia sozinho: a soma de "hoje" já reseta com o próprio filtro
+        de data, sem precisar de lógica extra pra detectar reinício de
+        contador.
+      - Sem leitura nenhuma hoje ainda (primeira do dia, ou primeira de
+        todas): devolve o total corrido como está — é literalmente "chuva
+        desde a meia-noite até agora", mesmo significado que a exibição
+        antiga de "Hoje" já tinha pra essa fonte, não é uma invenção.
+    """
+    from django.db.models import Sum
+    from django.utils import timezone
+
+    from core.models import Reading
+
+    inicio_hoje_local = timezone.localtime(timezone.now()).replace(hour=0, minute=0, second=0, microsecond=0)
+    leituras_hoje = Reading.objects.filter(
+        station__source__slug=source_slug,
+        station__external_id=external_id,
+        reading_type=Reading.ReadingType.CHUVA_MM,
+        timestamp__gte=inicio_hoje_local,
+    )
+    if not leituras_hoje.exists():
+        return valor_atual_hoje
+    ja_registrado_hoje = leituras_hoje.aggregate(total=Sum("value"))["total"] or 0.0
+    return max(valor_atual_hoje - ja_registrado_hoje, 0.0)
+
+
 @dataclass
 class IngestResult:
     stations_created: int = 0

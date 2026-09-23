@@ -103,21 +103,31 @@ export type PrecipitacaoStation = {
   latitude: number;
   longitude: number;
   updated_at: string | null;
-  /** Última leitura "bruta" — só preenchido pra fontes tipo "balde" (Alerta Rio, INMET, ...). */
+  /** Última leitura "bruta". */
   chuva_agora_mm: number | null;
   /** Acumulado desde a meia-noite local. Sempre que disponível, pra qualquer fonte. */
   acumulado_hoje_mm: number | null;
-  /** Acumulado desde o dia 1 do mês corrente (hora local). Só "balde". */
+  /** Acumulado nos últimos 7 dias corridos (não confundir com "1 mês" —
+   * janela corrida de 30 dias — nem com "mês", que é desde o dia 1 do
+   * mês corrente/calendário). */
+  acumulado_168h_mm: number | null;
+  /** Janela CORRIDA de 30 dias (equivalente ao "1 Mês" do portal de
+   * sirenes do CEMADEN-RJ) — diferente de acumulado_mes_mm (calendário). */
+  acumulado_1mes_mm: number | null;
+  /** Desde o dia 1 do mês corrente (calendário, hora local) — "No Mês". */
   acumulado_mes_mm: number | null;
   /** Maior leitura individual nas últimas 24h — equivalente ao "TX-15" do
    * Alerta Rio, mas sem assumir literalmente 15min (a cadência varia por
-   * fonte). Só "balde". */
+   * fonte). */
   pico_mm: number | null;
-  /** Todas as janelas abaixo só disponíveis pra fontes tipo "balde" —
-   * Wunderground/Plugfield reportam total corrido do dia, não dá pra
-   * somar em janelas menores sem contar errado. Sem 5min/10min de
-   * propósito: nossa cadência real é ~15min pra quase tudo, uma janela
-   * menor que isso só repetiria "agora" sem informação nova. */
+  /** Todas as janelas abaixo (exceto "Hoje" acima) só disponíveis pra
+   * fontes tipo "balde" — Wunderground/Plugfield reportam total corrido
+   * do dia na origem, mas os conectores já convertem pra "balde" na
+   * ingestão (ver bucket_from_running_daily no backend), então também
+   * aparecem aqui como qualquer outra fonte. */
+  acumulado_5min_mm: number | null;
+  acumulado_10min_mm: number | null;
+  acumulado_15min_mm: number | null;
   acumulado_30min_mm: number | null;
   acumulado_1h_mm: number | null;
   acumulado_2h_mm: number | null;
@@ -126,6 +136,9 @@ export type PrecipitacaoStation = {
   acumulado_6h_mm: number | null;
   acumulado_12h_mm: number | null;
   acumulado_24h_mm: number | null;
+  acumulado_36h_mm: number | null;
+  acumulado_48h_mm: number | null;
+  acumulado_72h_mm: number | null;
   acumulado_96h_mm: number | null;
 };
 

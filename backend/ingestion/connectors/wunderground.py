@@ -36,7 +36,7 @@ from django.conf import settings
 
 from core.models import Reading, Station
 
-from .base import BaseConnector
+from .base import BaseConnector, bucket_from_running_daily
 
 logger = logging.getLogger("ingestion")
 
@@ -250,7 +250,15 @@ class WundergroundConnector(BaseConnector):
 
             add(Reading.ReadingType.TEMPERATURA_C, metric.get("temp"))
             add(Reading.ReadingType.UMIDADE_PCT, obs.get("humidity"))
-            add(Reading.ReadingType.CHUVA_MM, metric.get("precipTotal"))
+            # precipTotal é corrido desde a meia-noite local, não um valor
+            # por-janela — convertido pra "balde" (chuva NESSE intervalo),
+            # comparando com o que já guardamos hoje pra essa estação, pra
+            # ficar escalonado igual às fontes tipo "balde" (ver
+            # bucket_from_running_daily em base.py e
+            # PRECIPITACAO_BUCKET_SOURCES em api/views.py).
+            precip_total = metric.get("precipTotal")
+            if precip_total is not None:
+                add(Reading.ReadingType.CHUVA_MM, bucket_from_running_daily("wunderground", codigo, float(precip_total)))
             add(Reading.ReadingType.VENTO_DIR_GRAUS, obs.get("winddir"))
             # windSpeed/windGust vêm em km/h (convenção "metric" da Weather
             # Company) — convertendo para m/s para bater com o padrão do

@@ -22,21 +22,29 @@ from .serializers import (
 #   - "bucket": o valor é a chuva NA JANELA daquela leitura (ex: Alerta Rio
 #     m15 = chuva nos últimos 15min, INMET CHUVA = chuva na última hora).
 #     Somar leituras no período é válido.
-#   - "running_daily": o valor é um total corrido desde a meia-noite local
-#     (ex: Wunderground precipTotal, Plugfield rainDay). Somar leituras
-#     dobraria a contagem — o valor mais recente já É o acumulado do dia.
+#   - "running_daily": o valor é um total corrido desde a meia-noite local.
+#     Somar leituras dobraria a contagem — o valor mais recente já É o
+#     acumulado do dia. Nenhuma fonte ativa usa mais essa categoria desde
+#     2026-09-23: Wunderground/Plugfield relatam total corrido na origem
+#     (precipTotal/rainDay), mas os conectores já convertem pra "balde" na
+#     ingestão (ver bucket_from_running_daily em
+#     ingestion/connectors/base.py — pedido do usuário, precisava do dado
+#     "escalonado igual às demais" pra consulta futura direto no banco).
+#     Mantido aqui só como categoria disponível, caso uma fonte nova
+#     apareça sem essa conversão.
 PRECIPITACAO_BUCKET_SOURCES = {
     "alerta_rio",
     "cemaden_nacional",
     "inmet",
     "rio_chuva_bairro",
-    "cemaden_rj",
     "cemaden_mctic",
     "niteroi",
     "cemaden_rj_sirenes",
     "inea",
+    "wunderground",
+    "plugfield",
 }
-PRECIPITACAO_RUNNING_DAILY_SOURCES = {"wunderground", "plugfield"}
+PRECIPITACAO_RUNNING_DAILY_SOURCES: set[str] = set()
 
 
 class SourceViewSet(viewsets.ReadOnlyModelViewSet):
@@ -90,32 +98,33 @@ class StationViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=False, methods=["get"])
     def precipitacao(self, request):
         """Estações pluviométricas com chuva acumulada em várias janelas —
-        inspirado no formato do Alerta Rio (websempre.rio.rj.gov.br/estacoes/),
-        pedido pelo usuário pra ter mais granularidade que só 1h/24h/96h.
+        inspirado no formato do Alerta Rio (websempre.rio.rj.gov.br/estacoes/)
+        e do portal de sirenes do CEMADEN-RJ, pedido pelo usuário pra ter
+        o mesmo leque de janelas que essas referências.
 
         Endpoint dedicado (em vez de calcular isso no serializer padrão)
         porque exige somar leituras de "chuva_mm" — caro demais pra rodar
         em toda chamada de /api/stations/, que é usada pelo mapa e pela
         tabela meteorológica onde isso não é necessário.
 
-        NÃO inclui janelas de 5min/10min: a cadência real das nossas
-        fontes é de ~15min na maioria (cron a cada 15min), então uma
-        janela de 5/10min só repetiria "chuva_agora_mm" sem informação
-        nova — preferimos não fingir uma precisão que não temos.
+        5min/10min/15min/30min/1h/2h/3h/4h/6h/12h/24h/36h/48h/72h/96h são
+        todos derivados das MESMAS leituras já buscadas (até 96h atrás) —
+        filtrar em Python por cutoff é essencialmente grátis uma vez que
+        as linhas já estão em memória, sem custo de query adicional. Pra
+        fontes de cadência mais lenta que a janela (ex: INMET de 1h só
+        atualiza de hora em hora), 5min/10min/15min naturalmente saem
+        iguais a "Agora" — não é bug, é a granularidade real da fonte.
 
-        30min/2h/3h/4h/6h/12h/24h/96h são todos derivados das MESMAS
-        leituras já buscadas (até 96h atrás) — filtrar em Python por
-        cutoff é essencialmente grátis uma vez que as linhas já estão em
-        memória, sem custo de query adicional.
-
-        "mês" (desde o dia 1 do mês corrente, hora local) e "pico" (maior
-        leitura individual nas últimas 24h — nosso equivalente ao "TX-15"
-        do Alerta Rio, mas sem assumir literalmente 15min já que a
-        cadência varia por fonte) SÃO agregados NO BANCO (Sum/Max
-        agrupados por estação, uma linha por estação na resposta) — não
-        traz o histórico bruto de até 31 dias pra memória do processo,
-        o que já se mostrou arriscado no HostGator (ver o incidente de
-        N+1/payload gigante corrigido antes em StationListSerializer).
+        168h (7 dias), "1 mês" (janela corrida de 30 dias, não confundir
+        com "no mês" abaixo) e "pico" (maior leitura individual nas
+        últimas 24h — nosso equivalente ao "TX-15" do Alerta Rio, sem
+        assumir literalmente 15min já que a cadência varia por fonte) SÃO
+        agregados NO BANCO (Sum/Max agrupados por estação, uma linha por
+        estação na resposta) — não traz o histórico bruto de até 30 dias
+        pra memória do processo, o que já se mostrou arriscado no
+        HostGator (ver o incidente de N+1/payload gigante corrigido antes
+        em StationListSerializer). "no mês" (desde o dia 1 do mês
+        corrente, hora local — calendário, não janela corrida) também.
         """
         stations = list(
             self._filtered_stations()
@@ -125,7 +134,12 @@ class StationViewSet(viewsets.ReadOnlyModelViewSet):
         station_ids = [s.id for s in stations]
 
         now = timezone.now()
+        # Campos calculados em Python a partir das leituras já buscadas
+        # (até 96h atrás, ver JANELA_MAX_PYTHON abaixo).
         cutoffs = {
+            "acumulado_5min_mm": now - datetime.timedelta(minutes=5),
+            "acumulado_10min_mm": now - datetime.timedelta(minutes=10),
+            "acumulado_15min_mm": now - datetime.timedelta(minutes=15),
             "acumulado_30min_mm": now - datetime.timedelta(minutes=30),
             "acumulado_1h_mm": now - datetime.timedelta(hours=1),
             "acumulado_2h_mm": now - datetime.timedelta(hours=2),
@@ -134,34 +148,42 @@ class StationViewSet(viewsets.ReadOnlyModelViewSet):
             "acumulado_6h_mm": now - datetime.timedelta(hours=6),
             "acumulado_12h_mm": now - datetime.timedelta(hours=12),
             "acumulado_24h_mm": now - datetime.timedelta(hours=24),
+            "acumulado_36h_mm": now - datetime.timedelta(hours=36),
+            "acumulado_48h_mm": now - datetime.timedelta(hours=48),
+            "acumulado_72h_mm": now - datetime.timedelta(hours=72),
             "acumulado_96h_mm": now - datetime.timedelta(hours=96),
         }
+        JANELA_MAX_PYTHON = cutoffs["acumulado_96h_mm"]
+
+        # Campos agregados NO BANCO (janela maior que 96h, ou calendário).
+        cutoff_168h = now - datetime.timedelta(hours=168)
+        cutoff_1mes_corrido = now - datetime.timedelta(days=30)
         inicio_hoje_local = timezone.localtime(now).replace(hour=0, minute=0, second=0, microsecond=0)
-        inicio_mes_local = inicio_hoje_local.replace(day=1)
+        inicio_mes_calendario = inicio_hoje_local.replace(day=1)
 
         readings = Reading.objects.filter(
             station_id__in=station_ids,
             reading_type=Reading.ReadingType.CHUVA_MM,
-            timestamp__gte=cutoffs["acumulado_96h_mm"],
+            timestamp__gte=JANELA_MAX_PYTHON,
         ).values("station_id", "value", "timestamp")
 
         by_station = defaultdict(list)
         for r in readings:
             by_station[r["station_id"]].append(r)
 
-        # Agregado no banco (não traz linha por linha) — "mês" pode
-        # significar até 31 dias de leituras, não vale a pena carregar
-        # isso tudo em Python só pra somar.
-        soma_mes_por_estacao = {
-            row["station_id"]: row["total"]
-            for row in Reading.objects.filter(
-                station_id__in=station_ids,
-                reading_type=Reading.ReadingType.CHUVA_MM,
-                timestamp__gte=inicio_mes_local,
-            )
-            .values("station_id")
-            .annotate(total=Sum("value"))
-        }
+        def _soma_agregada_por_estacao(cutoff):
+            return {
+                row["station_id"]: row["total"]
+                for row in Reading.objects.filter(
+                    station_id__in=station_ids, reading_type=Reading.ReadingType.CHUVA_MM, timestamp__gte=cutoff
+                )
+                .values("station_id")
+                .annotate(total=Sum("value"))
+            }
+
+        soma_168h_por_estacao = _soma_agregada_por_estacao(cutoff_168h)
+        soma_1mes_corrido_por_estacao = _soma_agregada_por_estacao(cutoff_1mes_corrido)
+        soma_mes_calendario_por_estacao = _soma_agregada_por_estacao(inicio_mes_calendario)
         pico_24h_por_estacao = {
             row["station_id"]: row["maior"]
             for row in Reading.objects.filter(
@@ -196,6 +218,8 @@ class StationViewSet(viewsets.ReadOnlyModelViewSet):
                 "updated_at": latest["timestamp"] if latest else None,
                 "chuva_agora_mm": None,
                 "acumulado_hoje_mm": None,
+                "acumulado_168h_mm": None,
+                "acumulado_1mes_mm": None,
                 "acumulado_mes_mm": None,
                 "pico_mm": None,
                 **{campo: None for campo in cutoffs},
@@ -207,7 +231,9 @@ class StationViewSet(viewsets.ReadOnlyModelViewSet):
                 entry["acumulado_hoje_mm"] = sum(
                     r["value"] for r in rows if r["timestamp"] >= inicio_hoje_local
                 )
-                entry["acumulado_mes_mm"] = soma_mes_por_estacao.get(station.id)
+                entry["acumulado_168h_mm"] = soma_168h_por_estacao.get(station.id)
+                entry["acumulado_1mes_mm"] = soma_1mes_corrido_por_estacao.get(station.id)
+                entry["acumulado_mes_mm"] = soma_mes_calendario_por_estacao.get(station.id)
                 entry["pico_mm"] = pico_24h_por_estacao.get(station.id)
             elif kind == "running_daily":
                 entry["acumulado_hoje_mm"] = latest["value"] if latest else None
