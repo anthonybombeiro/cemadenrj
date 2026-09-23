@@ -36,8 +36,17 @@ class StationListSerializer(serializers.ModelSerializer):
         ]
 
     def get_latest_readings(self, obj: Station):
+        # IMPORTANTE: usar obj.readings.all() (não .order_by(...)) — chamar
+        # .order_by() num related manager prefetched dispara uma query NOVA
+        # pro banco, ignorando o cache do prefetch_related/Prefetch (N+1: uma
+        # query por estação). Com 670 estações isso já chegou a estourar o
+        # tempo do processo CGI em produção (HTTP 500 em /api/stations/).
+        # A queryset do Prefetch (StationViewSet.get_queryset) já vem
+        # filtrada por período recente e ordenada por (reading_type,
+        # -timestamp), então aqui é só pegar a primeira ocorrência de cada
+        # tipo, tudo em memória, sem tocar o banco de novo.
         latest_by_type = {}
-        for reading in obj.readings.order_by("reading_type", "-timestamp"):
+        for reading in obj.readings.all():
             if reading.reading_type not in latest_by_type:
                 latest_by_type[reading.reading_type] = reading
         return LatestReadingSerializer(latest_by_type.values(), many=True).data

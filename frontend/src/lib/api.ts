@@ -35,17 +35,38 @@ type Paginated<T> = {
   results: T[];
 };
 
-async function getJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE_URL}${path}`, { cache: "no-store" });
+async function getJson<T>(pathOuUrlAbsoluta: string): Promise<T> {
+  // `next`/`previous` da paginação do DRF já vêm como URL absoluta —
+  // aceitar os dois formatos evita ter que recortar API_BASE_URL de volta.
+  const url = /^https?:\/\//.test(pathOuUrlAbsoluta) ? pathOuUrlAbsoluta : `${API_BASE_URL}${pathOuUrlAbsoluta}`;
+  const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) {
-    throw new Error(`Falha ao buscar ${path}: HTTP ${res.status}`);
+    throw new Error(`Falha ao buscar ${pathOuUrlAbsoluta}: HTTP ${res.status}`);
   }
   return res.json();
 }
 
+/** Segue `next` até esgotar, em vez de pedir tudo com um `?limit=` gigante
+ * numa passada só — o backend tem um teto de segurança no `limit`
+ * (`api/pagination.py`, `max_limit=300`) justamente porque um payload
+ * gigante numa única resposta já derrubou o processo CGI de produção (ver
+ * commit que corrigiu o N+1 de `/api/stations/` em 2026-09-23). Conforme o
+ * número de estações for crescendo, isso continua funcionando — só faz
+ * mais uma volta de rede. */
+async function fetchAllPages<T>(path: string): Promise<T[]> {
+  const todos: T[] = [];
+  let proximo: string | null = path;
+  while (proximo) {
+    const data: Paginated<T> | T[] = await getJson<Paginated<T> | T[]>(proximo);
+    if (Array.isArray(data)) return data; // endpoint não-paginado — devolve direto
+    todos.push(...data.results);
+    proximo = data.next;
+  }
+  return todos;
+}
+
 export async function fetchStations(): Promise<Station[]> {
-  const data = await getJson<Paginated<Station> | Station[]>("/stations/?limit=1000");
-  return Array.isArray(data) ? data : data.results;
+  return fetchAllPages<Station>("/stations/?limit=300");
 }
 
 export async function fetchStationReadings(stationId: number): Promise<Reading[]> {
@@ -177,3 +198,47 @@ export const SOURCE_LABELS: Record<string, string> = {
   cemaden_mctic: "CEMADEN Nacional/MCTIC",
   niteroi: "Niterói (Defesa Civil)",
 };
+
+/** Uma cor fixa por fonte, pra dar pra distinguir de relance numa tabela
+ * cheia de linhas (mesma ideia da coluna "Rede" colorida da Rede Salvar do
+ * CEMADEN nacional — ver docs/referencia-visual-rede-salvar.md). Onde a
+ * fonte é literalmente a mesma rede que existe lá (INMET, CEMADEN-RJ,
+ * CEMADEN nacional), reaproveitamos a cor exata deles; pras fontes que só
+ * existem no nosso painel, pegamos emprestado uma cor do resto da paleta
+ * deles (SIMEPAR/INEA/PCJ/SJC/CODESAL) que sobrou sem uso aqui — mantém a
+ * mesma "família visual" sem inventar do zero. */
+export const SOURCE_COLORS: Record<string, string> = {
+  inmet: "#817C13", // = INMET na Rede Salvar
+  cemaden_rj: "#720066", // = CEMADEN-RJ na Rede Salvar
+  cemaden_mctic: "#0047F6", // = CEMADEN (nacional) na Rede Salvar
+  cemaden_nacional: "#6c757d", // conector antigo/morto — cinza neutro
+  alerta_rio: "#A91D3A", // emprestado da cor do CODESAL (Salvador) lá
+  wunderground: "#FF6500", // emprestado da cor do SJC lá
+  plugfield: "#007261", // emprestado da cor do INEA lá
+  rio_chuva_bairro: "#543C18", // conector morto (503) — emprestado do PCJ
+  niteroi: "#F712D4", // emprestado da cor do SIMEPAR lá
+};
+
+/** Faixas de atraso (tempo desde a última leitura) e cor associada — mesma
+ * ideia da coluna "Data" da Rede Salvar, mas com limiares adaptados: as
+ * fontes de lá misturam redes hidrológicas de cadência bem mais lenta
+ * (horas), enquanto as nossas atualizam tipicamente a cada 15min–1h. */
+export function getDelayStatus(iso: string | null): { color: string; label: string } {
+  if (!iso) return { color: "#9ca3af", label: "sem leitura" };
+  const horas = (Date.now() - new Date(iso).getTime()) / 3_600_000;
+  if (horas < 1) return { color: "#111827", label: "em dia" };
+  if (horas < 6) return { color: "#b45309", label: "atenção (1h–6h sem atualizar)" };
+  if (horas < 24) return { color: "#c2410c", label: "atrasado (6h–24h sem atualizar)" };
+  return { color: "#991b1b", label: "muito atrasado (> 24h sem atualizar)" };
+}
+
+/** Faixas de chuva acumulada em 24h — os mesmos 3 cortes (10/30/70mm) usados
+ * pelo próprio CEMADEN nacional na Rede Salvar (ícone amarelo/laranja/
+ * vermelho), reaproveitados aqui em vez de inventar limiar próprio. */
+export function getChuva24hNivel(mm: number | null): { color: string; label: string } | null {
+  if (mm == null) return null;
+  if (mm >= 70) return { color: "#dc2626", label: "> 70mm em 24h" };
+  if (mm >= 30) return { color: "#f97316", label: "30–70mm em 24h" };
+  if (mm >= 10) return { color: "#eab308", label: "10–30mm em 24h" };
+  return null;
+}

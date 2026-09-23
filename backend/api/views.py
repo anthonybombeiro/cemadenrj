@@ -1,6 +1,7 @@
 import datetime
 from collections import defaultdict
 
+from django.db.models import Prefetch
 from django.utils import timezone
 from rest_framework import viewsets
 from rest_framework.decorators import action
@@ -56,7 +57,23 @@ class StationViewSet(viewsets.ReadOnlyModelViewSet):
         return qs
 
     def get_queryset(self):
-        return self._filtered_stations().prefetch_related("readings")
+        # Prefetch com queryset PRÓPRIO (filtrado + ordenado) em vez de
+        # `.prefetch_related("readings")` cru — dois motivos:
+        #   1. Sem isso, 670+ estações cada uma acumulando semanas de
+        #      leitura a cada ~15min vira um prefetch gigante (todo o
+        #      histórico de todas as estações numa passada só) — já bateu
+        #      timeout/erro 500 em produção (processo CGI do HostGator,
+        #      sem os recursos de um servidor dedicado). Cortar pras
+        #      leituras dos últimos 7 dias é mais que suficiente pra achar
+        #      a "última leitura de cada tipo" de qualquer estação viva.
+        #   2. Já vem ordenado por (reading_type, -timestamp) — o
+        #      serializer só precisa pegar a primeira ocorrência de cada
+        #      tipo, sem precisar ordenar de novo em Python nem (pior)
+        #      chamar `.order_by()` no related manager, que dispararia uma
+        #      query nova POR ESTAÇÃO (N+1) — ver StationListSerializer.
+        cutoff = timezone.now() - datetime.timedelta(days=7)
+        leituras_recentes = Reading.objects.filter(timestamp__gte=cutoff).order_by("reading_type", "-timestamp")
+        return self._filtered_stations().prefetch_related(Prefetch("readings", queryset=leituras_recentes))
 
     @action(detail=True, methods=["get"])
     def readings(self, request, pk=None):
