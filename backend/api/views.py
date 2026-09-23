@@ -1,7 +1,7 @@
 import datetime
 from collections import defaultdict
 
-from django.db.models import Prefetch
+from django.db.models import Max, Prefetch, Sum
 from django.utils import timezone
 from rest_framework import viewsets
 from rest_framework.decorators import action
@@ -89,34 +89,89 @@ class StationViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=False, methods=["get"])
     def precipitacao(self, request):
-        """Estações pluviométricas com chuva acumulada em janelas padrão.
+        """Estações pluviométricas com chuva acumulada em várias janelas —
+        inspirado no formato do Alerta Rio (websempre.rio.rj.gov.br/estacoes/),
+        pedido pelo usuário pra ter mais granularidade que só 1h/24h/96h.
 
         Endpoint dedicado (em vez de calcular isso no serializer padrão)
-        porque exige somar leituras de "chuva_mm" das últimas 96h — caro
-        demais pra rodar em toda chamada de /api/stations/, que é usada
-        pelo mapa e pela tabela meteorológica onde isso não é necessário.
+        porque exige somar leituras de "chuva_mm" — caro demais pra rodar
+        em toda chamada de /api/stations/, que é usada pelo mapa e pela
+        tabela meteorológica onde isso não é necessário.
+
+        NÃO inclui janelas de 5min/10min: a cadência real das nossas
+        fontes é de ~15min na maioria (cron a cada 15min), então uma
+        janela de 5/10min só repetiria "chuva_agora_mm" sem informação
+        nova — preferimos não fingir uma precisão que não temos.
+
+        30min/2h/3h/4h/6h/12h/24h/96h são todos derivados das MESMAS
+        leituras já buscadas (até 96h atrás) — filtrar em Python por
+        cutoff é essencialmente grátis uma vez que as linhas já estão em
+        memória, sem custo de query adicional.
+
+        "mês" (desde o dia 1 do mês corrente, hora local) e "pico" (maior
+        leitura individual nas últimas 24h — nosso equivalente ao "TX-15"
+        do Alerta Rio, mas sem assumir literalmente 15min já que a
+        cadência varia por fonte) SÃO agregados NO BANCO (Sum/Max
+        agrupados por estação, uma linha por estação na resposta) — não
+        traz o histórico bruto de até 31 dias pra memória do processo,
+        o que já se mostrou arriscado no HostGator (ver o incidente de
+        N+1/payload gigante corrigido antes em StationListSerializer).
         """
         stations = list(
             self._filtered_stations()
             .filter(readings__reading_type=Reading.ReadingType.CHUVA_MM)
             .distinct()
         )
+        station_ids = [s.id for s in stations]
 
         now = timezone.now()
-        cutoff_96h = now - datetime.timedelta(hours=96)
-        cutoff_24h = now - datetime.timedelta(hours=24)
-        cutoff_1h = now - datetime.timedelta(hours=1)
+        cutoffs = {
+            "acumulado_30min_mm": now - datetime.timedelta(minutes=30),
+            "acumulado_1h_mm": now - datetime.timedelta(hours=1),
+            "acumulado_2h_mm": now - datetime.timedelta(hours=2),
+            "acumulado_3h_mm": now - datetime.timedelta(hours=3),
+            "acumulado_4h_mm": now - datetime.timedelta(hours=4),
+            "acumulado_6h_mm": now - datetime.timedelta(hours=6),
+            "acumulado_12h_mm": now - datetime.timedelta(hours=12),
+            "acumulado_24h_mm": now - datetime.timedelta(hours=24),
+            "acumulado_96h_mm": now - datetime.timedelta(hours=96),
+        }
         inicio_hoje_local = timezone.localtime(now).replace(hour=0, minute=0, second=0, microsecond=0)
+        inicio_mes_local = inicio_hoje_local.replace(day=1)
 
         readings = Reading.objects.filter(
-            station_id__in=[s.id for s in stations],
+            station_id__in=station_ids,
             reading_type=Reading.ReadingType.CHUVA_MM,
-            timestamp__gte=cutoff_96h,
+            timestamp__gte=cutoffs["acumulado_96h_mm"],
         ).values("station_id", "value", "timestamp")
 
         by_station = defaultdict(list)
         for r in readings:
             by_station[r["station_id"]].append(r)
+
+        # Agregado no banco (não traz linha por linha) — "mês" pode
+        # significar até 31 dias de leituras, não vale a pena carregar
+        # isso tudo em Python só pra somar.
+        soma_mes_por_estacao = {
+            row["station_id"]: row["total"]
+            for row in Reading.objects.filter(
+                station_id__in=station_ids,
+                reading_type=Reading.ReadingType.CHUVA_MM,
+                timestamp__gte=inicio_mes_local,
+            )
+            .values("station_id")
+            .annotate(total=Sum("value"))
+        }
+        pico_24h_por_estacao = {
+            row["station_id"]: row["maior"]
+            for row in Reading.objects.filter(
+                station_id__in=station_ids,
+                reading_type=Reading.ReadingType.CHUVA_MM,
+                timestamp__gte=cutoffs["acumulado_24h_mm"],
+            )
+            .values("station_id")
+            .annotate(maior=Max("value"))
+        }
 
         data = []
         for station in stations:
@@ -141,18 +196,19 @@ class StationViewSet(viewsets.ReadOnlyModelViewSet):
                 "updated_at": latest["timestamp"] if latest else None,
                 "chuva_agora_mm": None,
                 "acumulado_hoje_mm": None,
-                "acumulado_1h_mm": None,
-                "acumulado_24h_mm": None,
-                "acumulado_96h_mm": None,
+                "acumulado_mes_mm": None,
+                "pico_mm": None,
+                **{campo: None for campo in cutoffs},
             }
             if kind == "bucket":
                 entry["chuva_agora_mm"] = latest["value"] if latest else None
-                entry["acumulado_1h_mm"] = sum(r["value"] for r in rows if r["timestamp"] >= cutoff_1h)
-                entry["acumulado_24h_mm"] = sum(r["value"] for r in rows if r["timestamp"] >= cutoff_24h)
-                entry["acumulado_96h_mm"] = sum(r["value"] for r in rows)
+                for campo, cutoff in cutoffs.items():
+                    entry[campo] = sum(r["value"] for r in rows if r["timestamp"] >= cutoff)
                 entry["acumulado_hoje_mm"] = sum(
                     r["value"] for r in rows if r["timestamp"] >= inicio_hoje_local
                 )
+                entry["acumulado_mes_mm"] = soma_mes_por_estacao.get(station.id)
+                entry["pico_mm"] = pico_24h_por_estacao.get(station.id)
             elif kind == "running_daily":
                 entry["acumulado_hoje_mm"] = latest["value"] if latest else None
             data.append(entry)

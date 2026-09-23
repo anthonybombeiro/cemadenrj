@@ -107,8 +107,24 @@ export type PrecipitacaoStation = {
   chuva_agora_mm: number | null;
   /** Acumulado desde a meia-noite local. Sempre que disponível, pra qualquer fonte. */
   acumulado_hoje_mm: number | null;
-  /** Só disponível pra fontes tipo "balde" — Wunderground/Plugfield reportam total corrido do dia, não dá pra somar em janelas menores sem contar errado. */
+  /** Acumulado desde o dia 1 do mês corrente (hora local). Só "balde". */
+  acumulado_mes_mm: number | null;
+  /** Maior leitura individual nas últimas 24h — equivalente ao "TX-15" do
+   * Alerta Rio, mas sem assumir literalmente 15min (a cadência varia por
+   * fonte). Só "balde". */
+  pico_mm: number | null;
+  /** Todas as janelas abaixo só disponíveis pra fontes tipo "balde" —
+   * Wunderground/Plugfield reportam total corrido do dia, não dá pra
+   * somar em janelas menores sem contar errado. Sem 5min/10min de
+   * propósito: nossa cadência real é ~15min pra quase tudo, uma janela
+   * menor que isso só repetiria "agora" sem informação nova. */
+  acumulado_30min_mm: number | null;
   acumulado_1h_mm: number | null;
+  acumulado_2h_mm: number | null;
+  acumulado_3h_mm: number | null;
+  acumulado_4h_mm: number | null;
+  acumulado_6h_mm: number | null;
+  acumulado_12h_mm: number | null;
   acumulado_24h_mm: number | null;
   acumulado_96h_mm: number | null;
 };

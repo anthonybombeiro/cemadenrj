@@ -22,12 +22,35 @@ function formatTimestamp(iso: string | null): string {
   }
 }
 
-function formatMm(value: number | null): string {
-  if (value === null) return "—";
-  return `${(Math.round(value * 10) / 10).toFixed(1)} mm`;
+function formatMm(value: number | null | undefined): string {
+  if (value === null || value === undefined) return "—";
+  return `${(Math.round(value * 10) / 10).toFixed(1)}`;
 }
 
-type SortKey = "name" | "municipality" | "source" | "hoje" | "updated";
+/** Uma coluna por janela de acumulado — mesmo espírito da tabela do
+ * Alerta Rio (websempre.rio.rj.gov.br/estacoes/), pedido pelo usuário
+ * pra ter mais granularidade que só 1h/24h/96h. Sem 5min/10min de
+ * propósito: ver comentário em `StationViewSet.precipitacao` no backend
+ * (nossa cadência real não sustenta essa precisão pra a maioria das
+ * fontes). `key` bate exatamente com o campo de `PrecipitacaoStation`.
+ */
+const JANELAS: { key: keyof PrecipitacaoStation; label: string; titulo: string }[] = [
+  { key: "chuva_agora_mm", label: "Agora", titulo: "Última leitura bruta (só fontes tipo balde)" },
+  { key: "acumulado_30min_mm", label: "30min", titulo: "Acumulado nos últimos 30 minutos" },
+  { key: "acumulado_hoje_mm", label: "Hoje", titulo: "Acumulado desde a meia-noite local" },
+  { key: "acumulado_1h_mm", label: "1h", titulo: "Acumulado na última 1 hora" },
+  { key: "acumulado_2h_mm", label: "2h", titulo: "Acumulado nas últimas 2 horas" },
+  { key: "acumulado_3h_mm", label: "3h", titulo: "Acumulado nas últimas 3 horas" },
+  { key: "acumulado_4h_mm", label: "4h", titulo: "Acumulado nas últimas 4 horas" },
+  { key: "acumulado_6h_mm", label: "6h", titulo: "Acumulado nas últimas 6 horas" },
+  { key: "acumulado_12h_mm", label: "12h", titulo: "Acumulado nas últimas 12 horas" },
+  { key: "acumulado_24h_mm", label: "24h", titulo: "Acumulado nas últimas 24 horas" },
+  { key: "acumulado_96h_mm", label: "96h", titulo: "Acumulado nas últimas 96 horas (4 dias)" },
+  { key: "acumulado_mes_mm", label: "Mês", titulo: "Acumulado desde o dia 1 do mês corrente" },
+  { key: "pico_mm", label: "Pico", titulo: "Maior leitura individual nas últimas 24h (equivalente ao \"TX-15\" do Alerta Rio)" },
+];
+
+const COLUNAS_TEXTO = new Set(["name", "municipality", "source", "updated"]);
 
 export default function PrecipitationTable({
   stations,
@@ -37,7 +60,7 @@ export default function PrecipitationTable({
   /** Município (normalizado) → REDEC — ver DataTable.tsx/page.tsx. */
   municipioRedecMap?: Record<string, string>;
 }) {
-  const [sortKey, setSortKey] = useState<SortKey>("hoje");
+  const [sortKey, setSortKey] = useState<string>("acumulado_hoje_mm");
   const [sortAsc, setSortAsc] = useState(false);
   const redecOf = (municipality: string) => municipioRedecMap[normalizeMunicipioName(municipality)] ?? "";
 
@@ -48,23 +71,35 @@ export default function PrecipitationTable({
       if (sortKey === "name") cmp = a.name.localeCompare(b.name);
       else if (sortKey === "municipality") cmp = a.municipality.localeCompare(b.municipality);
       else if (sortKey === "source") cmp = a.source.localeCompare(b.source);
-      else if (sortKey === "hoje") cmp = (a.acumulado_hoje_mm ?? -1) - (b.acumulado_hoje_mm ?? -1);
       else if (sortKey === "updated") cmp = (a.updated_at ?? "").localeCompare(b.updated_at ?? "");
+      else {
+        // Coluna numérica de janela (Agora/30min/Hoje/1h/.../Pico) — quem
+        // não tem valor pra essa janela vai sempre pro fim, não importa
+        // a direção (mesma regra já usada em DataTable.tsx).
+        const va = a[sortKey as keyof PrecipitacaoStation] as number | null;
+        const vb = b[sortKey as keyof PrecipitacaoStation] as number | null;
+        if (va == null && vb == null) return 0;
+        if (va == null) return 1;
+        if (vb == null) return -1;
+        cmp = va - vb;
+      }
       return sortAsc ? cmp : -cmp;
     });
     return copy;
   }, [stations, sortKey, sortAsc]);
 
-  const toggleSort = (key: SortKey) => {
+  const toggleSort = (key: string) => {
     if (key === sortKey) {
       setSortAsc((v) => !v);
     } else {
       setSortKey(key);
-      setSortAsc(false);
+      // Texto começa A→Z; coluna numérica começa do maior pro menor
+      // (mais útil operacionalmente: quem está chovendo mais primeiro).
+      setSortAsc(COLUNAS_TEXTO.has(key));
     }
   };
 
-  const arrow = (key: SortKey) => (key === sortKey ? (sortAsc ? " ▲" : " ▼") : "");
+  const arrow = (key: string) => (key === sortKey ? (sortAsc ? " ▲" : " ▼") : "");
 
   const exportar = () => {
     const headers = [
@@ -72,11 +107,7 @@ export default function PrecipitationTable({
       "Município",
       "REDEC",
       "Fonte",
-      "Agora (mm)",
-      "Hoje (mm)",
-      "1h (mm)",
-      "24h (mm)",
-      "96h (mm)",
+      ...JANELAS.map((j) => `${j.label} (mm)`),
       "Atualizado em",
     ];
     const rows = sorted.map((s) => [
@@ -84,11 +115,7 @@ export default function PrecipitationTable({
       s.municipality || "",
       redecOf(s.municipality),
       SOURCE_LABELS[s.source] ?? s.source,
-      s.chuva_agora_mm ?? "",
-      s.acumulado_hoje_mm ?? "",
-      s.acumulado_1h_mm ?? "",
-      s.acumulado_24h_mm ?? "",
-      s.acumulado_96h_mm ?? "",
+      ...JANELAS.map((j) => (s[j.key] as number | null) ?? ""),
       formatTimestamp(s.updated_at),
     ]);
     downloadCsv(`cemaden-rj-precipitacao-${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
@@ -123,23 +150,27 @@ export default function PrecipitationTable({
       <table className="min-w-full border-collapse text-sm table-fixed">
         <thead className="sticky top-[4.5rem] bg-gray-100 text-left text-xs uppercase tracking-wide text-gray-600">
           <tr>
-            <th className="w-32 cursor-pointer select-none px-3 py-2" onClick={() => toggleSort("name")}>
+            <th className="w-28 cursor-pointer select-none px-3 py-2" onClick={() => toggleSort("name")}>
               Estação{arrow("name")}
             </th>
-            <th className="w-28 cursor-pointer select-none px-3 py-2" onClick={() => toggleSort("municipality")}>
+            <th className="w-24 cursor-pointer select-none px-3 py-2" onClick={() => toggleSort("municipality")}>
               Município{arrow("municipality")}
             </th>
-            <th className="w-24 whitespace-nowrap px-3 py-2">REDEC</th>
-            <th className="w-24 cursor-pointer select-none px-3 py-2" onClick={() => toggleSort("source")}>
+            <th className="w-20 whitespace-nowrap px-3 py-2">REDEC</th>
+            <th className="w-20 cursor-pointer select-none px-3 py-2" onClick={() => toggleSort("source")}>
               Fonte{arrow("source")}
             </th>
-            <th className="w-20 whitespace-nowrap px-3 py-2">Agora</th>
-            <th className="w-20 cursor-pointer select-none px-3 py-2" onClick={() => toggleSort("hoje")}>
-              Hoje{arrow("hoje")}
-            </th>
-            <th className="w-16 whitespace-nowrap px-3 py-2">1h</th>
-            <th className="w-16 whitespace-nowrap px-3 py-2">24h</th>
-            <th className="w-16 whitespace-nowrap px-3 py-2">96h</th>
+            {JANELAS.map((j) => (
+              <th
+                key={j.key}
+                className="w-14 cursor-pointer select-none whitespace-nowrap px-2 py-2 text-right"
+                onClick={() => toggleSort(j.key)}
+                title={j.titulo}
+              >
+                {j.label}
+                {arrow(j.key)}
+              </th>
+            ))}
             <th className="w-24 cursor-pointer select-none px-3 py-2" onClick={() => toggleSort("updated")}>
               Atualizado em{arrow("updated")}
             </th>
@@ -156,6 +187,7 @@ export default function PrecipitationTable({
             // getChuva1hFaixa). "Atrasada" usa o mesmo corte de >1h sem
             // atualizar que já usamos pra colorir a coluna "Atualizado em".
             const faixa1h = getChuva1hFaixa(s.acumulado_1h_mm, atraso.atrasado);
+            const corTexto = faixa1h?.text;
             return (
               <tr
                 key={`${s.source}-${s.id}`}
@@ -163,16 +195,13 @@ export default function PrecipitationTable({
                 style={faixa1h ? { backgroundColor: faixa1h.bg } : undefined}
                 title={faixa1h?.label}
               >
-                <td
-                  className="break-words px-3 py-1.5 font-medium"
-                  style={{ color: faixa1h?.text ?? "#111827" }}
-                >
+                <td className="break-words px-3 py-1.5 font-medium" style={{ color: corTexto ?? "#111827" }}>
                   {s.name}
                 </td>
-                <td className="break-words px-3 py-1.5" style={{ color: faixa1h?.text ?? "#4b5563" }}>
+                <td className="break-words px-3 py-1.5" style={{ color: corTexto ?? "#4b5563" }}>
                   {s.municipality || "—"}
                 </td>
-                <td className="break-words px-3 py-1.5" style={{ color: faixa1h?.text ?? "#6b7280" }}>
+                <td className="break-words px-3 py-1.5" style={{ color: corTexto ?? "#6b7280" }}>
                   {redecOf(s.municipality) || "—"}
                 </td>
                 <td
@@ -182,30 +211,26 @@ export default function PrecipitationTable({
                 >
                   {SOURCE_LABELS[s.source] ?? s.source}
                 </td>
-                <td className="break-words px-3 py-1.5" style={{ color: faixa1h?.text ?? "#1f2937" }}>
-                  {formatMm(s.chuva_agora_mm)}
-                </td>
-                <td className="break-words px-3 py-1.5 font-medium" style={{ color: faixa1h?.text ?? "#111827" }}>
-                  <span className="inline-flex items-center gap-1.5">
-                    {nivel && (
-                      <span
-                        className="inline-block h-2.5 w-2.5 rounded-full"
-                        style={{ backgroundColor: nivel.color }}
-                        title={nivel.label}
-                      />
-                    )}
-                    {formatMm(s.acumulado_hoje_mm)}
-                  </span>
-                </td>
-                <td className="break-words px-3 py-1.5" style={{ color: faixa1h?.text ?? "#1f2937" }}>
-                  {formatMm(s.acumulado_1h_mm)}
-                </td>
-                <td className="break-words px-3 py-1.5" style={{ color: faixa1h?.text ?? "#1f2937" }}>
-                  {formatMm(s.acumulado_24h_mm)}
-                </td>
-                <td className="break-words px-3 py-1.5" style={{ color: faixa1h?.text ?? "#1f2937" }}>
-                  {formatMm(s.acumulado_96h_mm)}
-                </td>
+                {JANELAS.map((j) =>
+                  j.key === "acumulado_hoje_mm" ? (
+                    <td key={j.key} className="whitespace-nowrap px-2 py-1.5 text-right font-medium" style={{ color: corTexto ?? "#111827" }}>
+                      <span className="inline-flex items-center justify-end gap-1.5">
+                        {nivel && (
+                          <span
+                            className="inline-block h-2.5 w-2.5 rounded-full"
+                            style={{ backgroundColor: nivel.color }}
+                            title={nivel.label}
+                          />
+                        )}
+                        {formatMm(s[j.key] as number | null)}
+                      </span>
+                    </td>
+                  ) : (
+                    <td key={j.key} className="whitespace-nowrap px-2 py-1.5 text-right" style={{ color: corTexto ?? "#1f2937" }}>
+                      {formatMm(s[j.key] as number | null)}
+                    </td>
+                  ),
+                )}
                 <td className="break-words px-3 py-1.5" style={{ color: faixa1h ? faixa1h.text : atraso.color }} title={atraso.label}>
                   {formatTimestamp(s.updated_at)}
                 </td>
@@ -218,9 +243,11 @@ export default function PrecipitationTable({
         <div className="p-6 text-center text-sm text-gray-400">Nenhuma estação pluviométrica encontrada.</div>
       )}
       <div className="border-t border-gray-100 p-2 text-xs text-gray-400">
-        &ldquo;1h&rdquo;/&ldquo;24h&rdquo;/&ldquo;96h&rdquo; só ficam disponíveis para fontes que reportam chuva por
-        intervalo (Alerta Rio, CEMADEN, INMET). Fontes que reportam total corrido do dia (Wunderground, Plugfield)
-        mostram apenas &ldquo;Hoje&rdquo;.
+        Todas as janelas (exceto &ldquo;Hoje&rdquo;) só ficam disponíveis para fontes que reportam chuva por
+        intervalo (Alerta Rio, CEMADEN, INMET, INEA, ...). Fontes que reportam total corrido do dia (Wunderground,
+        Plugfield) mostram apenas &ldquo;Hoje&rdquo;. Sem colunas de 5min/10min: nossa cadência real é de ~15min pra
+        quase todas as fontes, uma janela menor não traria informação nova além de &ldquo;Agora&rdquo;. Clique em
+        qualquer cabeçalho pra ordenar (crescente/decrescente).
       </div>
     </div>
   );
