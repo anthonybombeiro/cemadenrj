@@ -163,6 +163,15 @@ WUNDERGROUND_API_KEY = os.environ.get("WUNDERGROUND_API_KEY", "")
 NITEROI_API_USERNAME = os.environ.get("NITEROI_API_USERNAME", "")
 NITEROI_API_PASSWORD = os.environ.get("NITEROI_API_PASSWORD", "")
 
+# Login de SERVIÇO (criado especificamente pra essa automação, não é a
+# conta pessoal do diretor) pra área autenticada do portal de sirenes do
+# CEMADEN-RJ (sirene.cbmerj.rj.gov.br, hospedado no domínio do CBMERJ —
+# ver docstring de cemaden_rj_pluviometros.py) — dá acesso ao mapa das 225
+# estações de alerta/alarme (sirenes) e status de acionamento, que as 85
+# estações pluviométricas públicas não mostram. Criado em 2026-09-23.
+CEMADEN_RJ_SIRENES_USERNAME = os.environ.get("CEMADEN_RJ_SIRENES_USERNAME", "")
+CEMADEN_RJ_SIRENES_PASSWORD = os.environ.get("CEMADEN_RJ_SIRENES_PASSWORD", "")
+
 INMET_API_TOKEN = os.environ.get("INMET_API_TOKEN", "")
 
 # Solução temporária enquanto não há token da API: faz scraping da tabela

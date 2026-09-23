@@ -25,6 +25,7 @@ class Station(models.Model):
         HIDROLOGICA = "hidrologica", "Hidrológica (nível de rio)"
         METEOROLOGICA = "meteorologica", "Meteorológica (completa)"
         MARE = "mare", "Maré/Oceanográfica"
+        SIRENE = "sirene", "Sirene/Alarme"
         OUTRO = "outro", "Outro"
 
     class Status(models.TextChoices):

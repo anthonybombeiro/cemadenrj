@@ -24,3 +24,23 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Sirene de alarme tocando agora (MapView.tsx) — pulso vermelho, chama
+   atenção sem precisar de JS/timer no componente. */
+@keyframes sirene-pulso {
+  0% {
+    stroke-opacity: 1;
+    fill-opacity: 0.9;
+  }
+  50% {
+    stroke-opacity: 0.35;
+    fill-opacity: 0.35;
+  }
+  100% {
+    stroke-opacity: 1;
+    fill-opacity: 0.9;
+  }
+}
+.sirene-tocando {
+  animation: sirene-pulso 1.2s ease-in-out infinite;
+}

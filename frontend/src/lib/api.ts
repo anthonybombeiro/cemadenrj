@@ -28,6 +28,26 @@ export type Reading = {
   timestamp: string;
 };
 
+/** Um "evento" ativo do nosso próprio AlertRule/AlertEvent (diferente do
+ * RiskAlert, que é a classificação já pronta da Defesa Civil) — hoje
+ * usado só pelas sirenes de alarme (ver ingestion/connectors/
+ * cemaden_rj_sirenes.py): um AlertEvent sem resolved_at = sirene tocando
+ * agora naquela estação. */
+export type AlertEvent = {
+  id: number;
+  rule_name: string;
+  severity: string;
+  station: number;
+  station_name: string;
+  value: number;
+  triggered_at: string;
+  resolved_at: string | null;
+};
+
+export async function fetchActiveAlertEvents(): Promise<AlertEvent[]> {
+  return fetchAllPages<AlertEvent>("/alerts/?active=true&limit=300");
+}
+
 type Paginated<T> = {
   count: number;
   next: string | null;
@@ -184,6 +204,7 @@ export const STATION_TYPE_LABELS: Record<string, string> = {
   hidrologica: "Hidrológica",
   meteorologica: "Meteorológica",
   mare: "Maré/Oceanográfica",
+  sirene: "Sirene/Alarme",
   outro: "Outro",
 };
 
@@ -197,6 +218,7 @@ export const SOURCE_LABELS: Record<string, string> = {
   cemaden_rj: "CEMADEN-RJ (rede própria)",
   cemaden_mctic: "CEMADEN Nacional/MCTIC",
   niteroi: "Niterói (Defesa Civil)",
+  cemaden_rj_sirenes: "CEMADEN-RJ — Sirenes/Alarme",
 };
 
 /** Uma cor fixa por fonte, pra dar pra distinguir de relance numa tabela
@@ -217,6 +239,10 @@ export const SOURCE_COLORS: Record<string, string> = {
   plugfield: "#007261", // emprestado da cor do INEA lá
   rio_chuva_bairro: "#543C18", // conector morto (503) — emprestado do PCJ
   niteroi: "#F712D4", // emprestado da cor do SIMEPAR lá
+  // Vermelho vivo (mesmo tom do "muito alto" em getChuva24hNivel) — não
+  // reaproveitado da Rede Salvar dessa vez, de propósito: aqui o vermelho
+  // já é usado consistentemente no resto do painel pra "emergência/perigo".
+  cemaden_rj_sirenes: "#dc2626",
 };
 
 /** Faixas de atraso (tempo desde a última leitura) e cor associada — mesma

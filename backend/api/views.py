@@ -33,6 +33,7 @@ PRECIPITACAO_BUCKET_SOURCES = {
     "cemaden_rj",
     "cemaden_mctic",
     "niteroi",
+    "cemaden_rj_sirenes",
 }
 PRECIPITACAO_RUNNING_DAILY_SOURCES = {"wunderground", "plugfield"}
 

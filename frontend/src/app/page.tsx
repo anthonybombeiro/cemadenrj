@@ -8,6 +8,8 @@ import DataTable, { METEOROLOGICAL_READING_TYPES } from "@/components/DataTable"
 import PrecipitationTable from "@/components/PrecipitationTable";
 import RiscosOverviewPanel from "@/components/RiscosOverviewPanel";
 import {
+  AlertEvent,
+  fetchActiveAlertEvents,
   fetchPrecipitacao,
   fetchStations,
   PrecipitacaoStation,
@@ -46,6 +48,33 @@ export default function HomePage() {
   const [precipitacaoLoading, setPrecipitacaoLoading] = useState(false);
   const [precipitacaoError, setPrecipitacaoError] = useState<string | null>(null);
   const [precipitacaoLoaded, setPrecipitacaoLoaded] = useState(false);
+
+  const [activeAlertEvents, setActiveAlertEvents] = useState<AlertEvent[]>([]);
+
+  // Sirene tocando é dado de segurança em tempo real, não meteorológico
+  // passivo — busca de novo sozinho a cada 1 minuto (bem mais frequente
+  // que o resto do painel, que hoje só busca 1x ao carregar), em
+  // qualquer aba, pra não depender do operador estar olhando o mapa no
+  // momento exato do acionamento.
+  useEffect(() => {
+    let cancelled = false;
+    const carregar = () => {
+      fetchActiveAlertEvents()
+        .then((data) => {
+          if (!cancelled) setActiveAlertEvents(data);
+        })
+        .catch(() => {
+          // Falha aqui não deve quebrar o resto do painel — só fica sem
+          // o destaque de sirene até a próxima tentativa.
+        });
+    };
+    carregar();
+    const intervalo = setInterval(carregar, 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(intervalo);
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -131,6 +160,12 @@ export default function HomePage() {
   return (
     <div className="flex h-screen flex-col">
       <header className="flex flex-col gap-3 border-b border-gray-200 bg-white px-4 py-3 shadow-sm">
+        {activeAlertEvents.length > 0 && (
+          <div className="animate-pulse rounded-lg bg-red-600 px-4 py-2 text-sm font-bold text-white shadow">
+            🔊 {activeAlertEvents.length === 1 ? "1 sirene tocando agora" : `${activeAlertEvents.length} sirenes tocando agora`}
+            : {activeAlertEvents.map((e) => e.station_name).join(", ")}
+          </div>
+        )}
         <div className="min-w-0">
           <h1 className="text-lg font-bold text-gray-900">Painel Meteorológico/Hidrológico — CEMADEN-RJ</h1>
           <p className="text-xs text-gray-500">
@@ -236,7 +271,7 @@ export default function HomePage() {
         )}
 
         <main className="relative flex-1 overflow-hidden">
-          {viewMode === "mapa" && <MapView stations={filteredStations} />}
+          {viewMode === "mapa" && <MapView stations={filteredStations} activeAlertEvents={activeAlertEvents} />}
           {viewMode === "precipitacao" && <PrecipitationTable stations={filteredPrecipitacao} />}
           {viewMode === "meteorologico" && (
             <DataTable

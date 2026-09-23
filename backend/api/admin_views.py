@@ -15,6 +15,10 @@ Deliberadamente uma lista BRANCA fixa de ações (nunca comando arbitrário):
   - "sync_risk_alerts": roda ingestion/connectors/cemaden_rj_alertas.py
     (alertas oficiais de risco da Defesa Civil-RJ — não é um conector
     Station/Reading, por isso não está no REGISTRY normal)
+  - "sync_sirenes": roda ingestion/connectors/cemaden_rj_sirenes.py (as
+    225 sirenes de alerta/alarme da CEMADEN-RJ, via API autenticada —
+    também fora do REGISTRY normal, porque além de Station/Reading isso
+    também cria/resolve AlertEvent de acionamento)
   - "delete_stations": apaga estações de UMA fonte cujo external_id
     bate com um filtro — usado pra limpar registros órfãos quando um
     conector muda o jeito de calcular o external_id (ex: cemaden_mctic já
@@ -39,7 +43,7 @@ from rest_framework.views import APIView
 
 logger = logging.getLogger("ingestion")
 
-ACOES_PERMITIDAS = {"migrate", "collectstatic", "ingest", "sync_risk_alerts", "delete_stations"}
+ACOES_PERMITIDAS = {"migrate", "collectstatic", "ingest", "sync_risk_alerts", "sync_sirenes", "delete_stations"}
 
 
 class AdminOpsView(APIView):
@@ -86,6 +90,11 @@ class AdminOpsView(APIView):
                 from ingestion.connectors import cemaden_rj_alertas
 
                 resultado = cemaden_rj_alertas.sync()
+                saida.write(resultado.summary())
+            elif action == "sync_sirenes":
+                from ingestion.connectors import cemaden_rj_sirenes
+
+                resultado = cemaden_rj_sirenes.sync()
                 saida.write(resultado.summary())
             elif action == "delete_stations":
                 import re as re_module
