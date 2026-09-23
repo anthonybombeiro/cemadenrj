@@ -88,6 +88,8 @@ class AdminOpsView(APIView):
                 resultado = cemaden_rj_alertas.sync()
                 saida.write(resultado.summary())
             elif action == "delete_stations":
+                import re as re_module
+
                 from core.models import Station
 
                 source = (request.data or {}).get("source")
@@ -103,12 +105,28 @@ class AdminOpsView(APIView):
                         },
                         status=400,
                     )
-                qs = Station.objects.filter(source__slug=source)
-                if contains:
-                    qs = qs.filter(external_id__contains=contains)
-                if regex:
-                    qs = qs.filter(external_id__iregex=regex)
-                apagadas, _ = qs.delete()
+                # Filtra em Python, não em SQL: o MySQL 5.7 de produção não
+                # tem REGEXP_LIKE (só chegou no 8.0.4+), que é o que o
+                # Django gera por baixo de __regex/__iregex nesse servidor
+                # — dá erro "(1305, 'FUNCTION ...REGEXP_LIKE does not
+                # exist')" mesmo pedindo a variante case-sensitive. Buscar
+                # os pares (id, external_id) e filtrar aqui evita depender
+                # de qual dialeto de regex o banco tem disponível.
+                candidatos = Station.objects.filter(source__slug=source).values_list("id", "external_id")
+                padrao = re_module.compile(regex) if regex else None
+
+                def _bate(external_id: str) -> bool:
+                    # AND entre os filtros informados — igual ao .filter()
+                    # encadeado que isso substitui: se os dois vierem, os
+                    # dois precisam bater, não é OU.
+                    if contains and contains not in external_id:
+                        return False
+                    if padrao and not padrao.search(external_id):
+                        return False
+                    return True
+
+                ids_para_apagar = [pk for pk, external_id in candidatos if _bate(external_id)]
+                apagadas, _ = Station.objects.filter(pk__in=ids_para_apagar).delete()
                 saida.write(f"objetos apagados (estação + leituras em cascata): {apagadas}")
         except Exception as exc:  # noqa: BLE001
             logger.exception("Falha ao executar ação administrativa %r", action)
