@@ -1,35 +1,39 @@
 """
-Conector para a tabela pública de pluviômetros do Sistema de Alerta e
-Alarme Sonoro (rede de sirenes do estado), hospedado no domínio do
-CBMERJ mas operado pelo CEMADEN-RJ (confirmado pelo usuário — diretor do
+Conectores para as páginas públicas de pluviômetros do Sistema de Alerta e
+Alarme Sonoro (rede de sirenes do estado), hospedado no domínio do CBMERJ
+mas operado pelo CEMADEN-RJ (confirmado pelo usuário — diretor do
 CEMADEN-RJ — em setembro/2026: o CBMERJ só empresta domínio/servidor,
 ambos são órgãos da mesma Secretaria de Estado de Defesa Civil).
 
-  GET http://sirene.cbmerj.rj.gov.br:8080/sirenesestadorj/ConsultaPluviometros
-      ?cmd=dadosPluviometrosTotal
+Existem várias páginas com `cmd=` diferentes, cada uma dedicada a UMA
+fonte (testado sistematicamente em setembro/2026 — nenhuma delas revela
+de onde o CEMADEN-RJ tira o dado do CEMADEN nacional, mas a página
+dedicada tem uma coluna que a combinada não tem, ver abaixo):
 
-Página HTML pública, SEM login (testado direto, sem sessão/cookie),
-contendo uma tabela (`id="chuva-limits"`) com uma linha por estação e
-colunas: Fonte, Redec, Cidade, Estação, 15 Min, 1 Hora, 24 Horas,
-96 Horas, 1 Mês, Geo (ícone de status), Data e Hora.
+  - `ConsultaPluviometros?cmd=dadosPluviometros`
+    → só CEMADEN-RJ (~85 estações, rede PRÓPRIA do estado — nunca
+    tínhamos acesso direto a isso antes, é o pedido original deste
+    projeto). Colunas: Redec, Cidade, Estação, 3 Min, 15 Min, 1 Hora,
+    4 Horas, 12 Horas, 24 Horas, 48 Horas, 72 Horas, 96 Horas, 1 Mês,
+    Data e Hora. Sem código de estação.
+  - `ConsultaPluviometros?cmd=dadosPluviometrosCemaden`
+    → só CEMADEN Nacional/MCTIC (~247 estações — mesma rede do
+    `cemaden_nacional.py` antigo, cujo endpoint documentado está morto há
+    meses; esse canal funciona de verdade). Colunas: Redec, Cidade, Nome
+    Estação, **Codigo Estação** (ex: "330580216A" — formato oficial do
+    CEMADEN nacional, UF+município+sequencial+tipo), 15 Min, 1 Hora,
+    4 Horas, 24 Horas, 96 Horas, 1 Mês, Data e Hora. Usamos o código
+    oficial como `external_id` — bem melhor que inventar uma chave.
+  - `ConsultaPluviometros?cmd=dadosPluviometrosTotal`
+    → as duas acima JUNTAS + ~30 estações de Niterói, com uma coluna
+    "Fonte" a mais pra distinguir. Não usamos mais essa (preferimos as
+    dedicadas, que têm mais detalhe); Niterói tem API própria com
+    lat/lon exata, usada em `niteroi.py`.
 
-A coluna "Fonte" mistura estações de origens diferentes na mesma tabela —
-por isso este arquivo define 2 conectores, um por fonte, cada um filtrando
-sua parte:
-  - CEMADEN RJ     → slug "cemaden_rj"     (~85 estações — rede PRÓPRIA do
-    estado, nunca tínhamos acesso direto a isso antes; é o pedido original
-    deste projeto desde o início)
-  - CEMADEN MCTIC   → slug "cemaden_mctic"  (~247 estações — mesma rede
-    nacional do `cemaden_nacional.py`, mas por este canal; o endpoint
-    documentado oficial do CEMADEN nacional está fora do ar há meses, esse
-    aqui funciona de verdade)
+Todas são páginas HTML públicas, SEM login (testado direto, sem
+sessão/cookie).
 
-(A tabela também traz ~30 estações de "NITERÓI", mas essas têm uma API
-própria — GeoJSON de verdade, com latitude/longitude exata por estação —
-usada em `niteroi.py` em vez de aproximar pelo centroide do município
-como é feito aqui.)
-
-Sem latitude/longitude na tabela — só Redec/Cidade/Estação. Aproximamos
+Sem latitude/longitude nas tabelas — só Redec/Cidade/Estação. Aproximamos
 com o centroide do município (`ingestion/data/rj_municipios_centroides.json`,
 calculado a partir da malha do IBGE — ver frontend/src/lib/geo.ts pro
 equivalente do lado do frontend). `raw_metadata["coordenadas_aproximadas"]`
@@ -39,12 +43,12 @@ mas não usar isso pra nada que precise de precisão de local.
 
 "15 Min" é o valor que guardamos como `chuva_mm` — é chuva NA janela dos
 últimos 15 min (tipo "balde", igual Alerta Rio/INMET — ver
-`PRECIPITACAO_BUCKET_SOURCES` em `api/views.py`, onde esses 3 slugs
-precisam ser adicionados). As janelas maiores (1h/24h/96h/1mês) que a
-própria tabela já entrega prontas NÃO são usadas diretamente — preferimos
-deixar nosso próprio endpoint de acumulado (que soma os "15 Min" ao longo
-do tempo) calcular do jeito consistente com as outras fontes, mesmo que
-isso signifique um "aquecimento" de até 4 dias pra 96h ficar completo.
+`PRECIPITACAO_BUCKET_SOURCES` em `api/views.py`). As janelas maiores que
+as tabelas já entregam prontas (1h/4h/24h/96h/1mês, ...) NÃO são usadas
+diretamente — preferimos deixar nosso próprio endpoint de acumulado (que
+soma os "15 Min" ao longo do tempo) calcular do jeito consistente com as
+outras fontes, mesmo que isso signifique um "aquecimento" de até 4 dias
+pra 96h ficar completo.
 """
 
 from __future__ import annotations
@@ -65,7 +69,9 @@ from .base import BaseConnector
 
 logger = logging.getLogger("ingestion")
 
-URL = "http://sirene.cbmerj.rj.gov.br:8080/sirenesestadorj/ConsultaPluviometros?cmd=dadosPluviometrosTotal"
+BASE_URL = "http://sirene.cbmerj.rj.gov.br:8080/sirenesestadorj/ConsultaPluviometros"
+URL_CEMADEN_RJ = f"{BASE_URL}?cmd=dadosPluviometros"
+URL_CEMADEN_MCTIC = f"{BASE_URL}?cmd=dadosPluviometrosCemaden"
 TZ_RJ = ZoneInfo("America/Sao_Paulo")
 
 BROWSER_HEADERS = {
@@ -78,12 +84,12 @@ BROWSER_HEADERS = {
 _CENTROIDES_PATH = Path(__file__).resolve().parent.parent / "data" / "rj_municipios_centroides.json"
 _centroides_cache: dict[str, list[float]] | None = None
 
-# Cache só pra evitar buscar a mesma página HTML (>600KB) duas vezes dentro
-# do MESMO processo — fetch_stations() e fetch_readings() são chamados em
+# Cache só pra evitar buscar a mesma página HTML duas vezes dentro do
+# MESMO processo — fetch_stations() e fetch_readings() são chamados em
 # sequência por BaseConnector.run() e parseiam a mesma tabela. Não
-# sobrevive entre requisições diferentes (cada ingest roda num processo CGI
-# novo em produção), então não precisa de expiração por tempo.
-_tabela_cache: list[dict] | None = None
+# sobrevive entre requisições diferentes (cada ingest roda num processo
+# CGI novo em produção), então não precisa de expiração por tempo.
+_tabela_cache: dict[str, list[dict]] = {}
 
 
 def _normaliza(texto: str) -> str:
@@ -120,54 +126,87 @@ def _parse_data_hora(valor: str) -> dt.datetime | None:
     return naive.replace(tzinfo=TZ_RJ).astimezone(dt.timezone.utc)
 
 
-def _fetch_tabela() -> list[dict]:
-    """Baixa e faz parsing da tabela `chuva-limits` uma vez por processo.
-    Retorna uma linha por estação, já com os campos nomeados."""
-    global _tabela_cache
-    if _tabela_cache is not None:
-        return _tabela_cache
-
-    resp = requests.get(URL, headers=BROWSER_HEADERS, timeout=30)
+def _baixar_tabela(url: str) -> str:
+    resp = requests.get(url, headers=BROWSER_HEADERS, timeout=30)
     resp.raise_for_status()
     html = resp.content.decode("ISO-8859-1")
-
     m = re.search(r'id="chuva-limits".*?<tbody>(.*?)</tbody>', html, re.S)
     if m is None:
-        raise ValueError("Tabela 'chuva-limits' não encontrada na página — layout pode ter mudado.")
+        raise ValueError(f"Tabela 'chuva-limits' não encontrada em {url} — layout pode ter mudado.")
+    return m.group(1)
 
+
+def _linhas_cruas(url: str) -> list[list[str]]:
+    corpo = _baixar_tabela(url)
     linhas = []
-    for tr in re.findall(r"<tr>\s*(.*?)</tr>", m.group(1), re.S):
+    for tr in re.findall(r"<tr>\s*(.*?)</tr>", corpo, re.S):
         celulas = re.findall(r"<td[^>]*>(.*?)</td>", tr, re.S)
         celulas = [re.sub(r"<[^>]+>", "", c).strip() for c in celulas]
-        if len(celulas) < 11 or not celulas[0]:
+        if celulas and celulas[0]:
+            linhas.append(celulas)
+    return linhas
+
+
+def _fetch_tabela_cemaden_rj() -> list[dict]:
+    """Colunas: Redec(0) Cidade(1) Estação(2) 3Min(3) 15Min(4) 1Hora(5) ..."""
+    if URL_CEMADEN_RJ in _tabela_cache:
+        return _tabela_cache[URL_CEMADEN_RJ]
+    linhas = []
+    for c in _linhas_cruas(URL_CEMADEN_RJ):
+        if len(c) < 14:
             continue
         linhas.append(
             {
-                "fonte": celulas[0],
-                "redec": celulas[1],
-                "cidade": celulas[2],
-                "estacao": celulas[3],
-                "chuva_15min": _to_float(celulas[4]),
-                "atualizado_em": _parse_data_hora(celulas[10]),
+                "redec": c[0],
+                "cidade": c[1],
+                "estacao": c[2],
+                "codigo": None,
+                "chuva_15min": _to_float(c[4]),
+                "atualizado_em": _parse_data_hora(c[13]),
             }
         )
+    _tabela_cache[URL_CEMADEN_RJ] = linhas
+    return linhas
 
-    _tabela_cache = linhas
+
+def _fetch_tabela_cemaden_mctic() -> list[dict]:
+    """Colunas: Redec(0) Cidade(1) NomeEstação(2) CodigoEstação(3) 15Min(4) ..."""
+    if URL_CEMADEN_MCTIC in _tabela_cache:
+        return _tabela_cache[URL_CEMADEN_MCTIC]
+    linhas = []
+    for c in _linhas_cruas(URL_CEMADEN_MCTIC):
+        if len(c) < 11:
+            continue
+        linhas.append(
+            {
+                "redec": c[0],
+                "cidade": c[1],
+                "estacao": c[2],
+                "codigo": c[3],
+                "chuva_15min": _to_float(c[4]),
+                "atualizado_em": _parse_data_hora(c[10]),
+            }
+        )
+    _tabela_cache[URL_CEMADEN_MCTIC] = linhas
     return linhas
 
 
 class _BaseCbmerjPluviometroConnector(BaseConnector):
-    """Compartilha o parsing; cada subclasse filtra sua própria "Fonte"."""
+    """Compartilha a montagem de estação/leitura; cada subclasse só define
+    de onde vêm as linhas e como calcular o external_id."""
 
-    fonte_filtro: str = ""
-    website = URL
+    website = BASE_URL
     description = "Pluviômetros via portal de sirenes do CEMADEN-RJ (hospedado no domínio do CBMERJ)."
+
+    def _fetch_linhas(self) -> list[dict]:
+        raise NotImplementedError
+
+    def _external_id(self, linha: dict) -> str:
+        raise NotImplementedError
 
     def fetch_stations(self) -> list[dict]:
         stations: dict[str, dict] = {}
-        for linha in _fetch_tabela():
-            if linha["fonte"] != self.fonte_filtro:
-                continue
+        for linha in self._fetch_linhas():
             centro = _centroide_municipio(linha["cidade"])
             if centro is None:
                 logger.warning(
@@ -175,7 +214,7 @@ class _BaseCbmerjPluviometroConnector(BaseConnector):
                     self.slug, linha["cidade"], linha["estacao"],
                 )
                 continue
-            external_id = f"{_normaliza(linha['cidade'])}|{_normaliza(linha['estacao'])}"
+            external_id = self._external_id(linha)
             lat, lon = centro
             stations[external_id] = {
                 "external_id": external_id,
@@ -188,7 +227,7 @@ class _BaseCbmerjPluviometroConnector(BaseConnector):
                 "altitude_m": None,
                 "raw_metadata": {
                     "redec": linha["redec"],
-                    "fonte": linha["fonte"],
+                    "codigo_estacao": linha["codigo"],
                     "coordenadas_aproximadas": True,
                 },
             }
@@ -196,15 +235,12 @@ class _BaseCbmerjPluviometroConnector(BaseConnector):
 
     def fetch_readings(self, stations: list[dict]) -> list[dict]:
         readings = []
-        for linha in _fetch_tabela():
-            if linha["fonte"] != self.fonte_filtro:
-                continue
+        for linha in self._fetch_linhas():
             if linha["chuva_15min"] is None or linha["atualizado_em"] is None:
                 continue
-            external_id = f"{_normaliza(linha['cidade'])}|{_normaliza(linha['estacao'])}"
             readings.append(
                 {
-                    "external_id": external_id,
+                    "external_id": self._external_id(linha),
                     "reading_type": Reading.ReadingType.CHUVA_MM,
                     "value": linha["chuva_15min"],
                     "timestamp": linha["atualizado_em"],
@@ -218,10 +254,23 @@ class _BaseCbmerjPluviometroConnector(BaseConnector):
 class CemadenRJConnector(_BaseCbmerjPluviometroConnector):
     slug = "cemaden_rj"
     name = "CEMADEN-RJ — Rede Própria (via portal de sirenes)"
-    fonte_filtro = "CEMADEN RJ"
+
+    def _fetch_linhas(self) -> list[dict]:
+        return _fetch_tabela_cemaden_rj()
+
+    def _external_id(self, linha: dict) -> str:
+        # Sem código oficial nessa página — chave sintética estável.
+        return f"{_normaliza(linha['cidade'])}|{_normaliza(linha['estacao'])}"
 
 
 class CemadenMcticConnector(_BaseCbmerjPluviometroConnector):
     slug = "cemaden_mctic"
     name = "CEMADEN Nacional/MCTIC (via portal de sirenes do CEMADEN-RJ)"
-    fonte_filtro = "CEMADEN MCTIC"
+
+    def _fetch_linhas(self) -> list[dict]:
+        return _fetch_tabela_cemaden_mctic()
+
+    def _external_id(self, linha: dict) -> str:
+        # Código oficial do CEMADEN nacional (ex: "330580216A") — usa
+        # direto, é bem mais estável que inventar uma chave por nome.
+        return linha["codigo"] or f"{_normaliza(linha['cidade'])}|{_normaliza(linha['estacao'])}"

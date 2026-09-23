@@ -15,6 +15,13 @@ Deliberadamente uma lista BRANCA fixa de ações (nunca comando arbitrário):
   - "sync_risk_alerts": roda ingestion/connectors/cemaden_rj_alertas.py
     (alertas oficiais de risco da Defesa Civil-RJ — não é um conector
     Station/Reading, por isso não está no REGISTRY normal)
+  - "delete_stations": apaga estações de UMA fonte cujo external_id
+    contém um texto — usado pra limpar registros órfãos quando um
+    conector muda o jeito de calcular o external_id (ex: cemaden_mctic
+    trocou de chave sintética "cidade|nome" pro código oficial da
+    estação; as antigas ficam órfãs, nunca mais recebem leitura).
+    Exige source + external_id_contains, os dois obrigatórios — nunca
+    apaga a fonte inteira sem esse segundo filtro.
 """
 
 from __future__ import annotations
@@ -31,7 +38,7 @@ from rest_framework.views import APIView
 
 logger = logging.getLogger("ingestion")
 
-ACOES_PERMITIDAS = {"migrate", "collectstatic", "ingest", "sync_risk_alerts"}
+ACOES_PERMITIDAS = {"migrate", "collectstatic", "ingest", "sync_risk_alerts", "delete_stations"}
 
 
 class AdminOpsView(APIView):
@@ -79,6 +86,19 @@ class AdminOpsView(APIView):
 
                 resultado = cemaden_rj_alertas.sync()
                 saida.write(resultado.summary())
+            elif action == "delete_stations":
+                from core.models import Station
+
+                source = (request.data or {}).get("source")
+                contains = (request.data or {}).get("external_id_contains")
+                if not source or not contains:
+                    return Response(
+                        {"detail": "delete_stations exige 'source' e 'external_id_contains'."}, status=400
+                    )
+                apagadas, _ = Station.objects.filter(
+                    source__slug=source, external_id__contains=contains
+                ).delete()
+                saida.write(f"objetos apagados (estação + leituras em cascata): {apagadas}")
         except Exception as exc:  # noqa: BLE001
             logger.exception("Falha ao executar ação administrativa %r", action)
             return Response({"detail": f"Erro: {exc}", "saida": saida.getvalue()}, status=500)
