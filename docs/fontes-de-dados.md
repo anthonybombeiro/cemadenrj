@@ -301,6 +301,25 @@ Acesso via API/feed de **estações** (não de alertas — isso já está
 resolvido acima) ainda depende de contato institucional direto com a
 Defesa Civil-RJ e/ou GridLab — em andamento pelo usuário deste projeto.
 
+**Atualização — RESOLVIDO (setembro/2026):** o próprio diretor do
+CEMADEN-RJ (usuário deste projeto) indicou outro caminho: o "Sistema de
+Alerta e Alarme Sonoro" (rede de sirenes do estado), hospedado em
+`sirene.cbmerj.rj.gov.br` — domínio do Corpo de Bombeiros, mas confirmado
+pelo diretor que é operado pelo próprio CEMADEN-RJ (o CBMERJ só empresta
+domínio/servidor; os dois são órgãos da mesma Secretaria de Estado de
+Defesa Civil, não uma integração externa). Ver
+`backend/ingestion/connectors/cemaden_rj_pluviometros.py` — finalmente
+temos as ~85 estações pluviométricas PRÓPRIAS do CEMADEN-RJ, de verdade,
+o pedido original deste projeto desde a primeira conversa.
+
+O mesmo portal também tem um mapa autenticado (`MapaControle?cmd=
+consultaEstacoesAtualiza`) com as 225 estações da rede de sirenes (140
+sirenes + 85 pluviômetros acoplados), latitude/longitude exata, e status
+em tempo real — inclusive quando uma sirene está TOCANDO. O diretor vai
+gerar um login/senha dedicados pra essa parte (ainda não integrada; exige
+sessão autenticada, diferente da tabela pública). Isso é operacionalmente
+importante: mostrar acionamento de sirene no mapa em tempo real.
+
 ## Ainda não iniciado (Fase 3 do plano)
 
 Marinha do Brasil (tábuas de maré/ondas), INPE/CPTEC (satélite), ANA
