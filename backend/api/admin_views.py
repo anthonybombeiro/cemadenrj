@@ -16,12 +16,13 @@ Deliberadamente uma lista BRANCA fixa de ações (nunca comando arbitrário):
     (alertas oficiais de risco da Defesa Civil-RJ — não é um conector
     Station/Reading, por isso não está no REGISTRY normal)
   - "delete_stations": apaga estações de UMA fonte cujo external_id
-    contém um texto — usado pra limpar registros órfãos quando um
-    conector muda o jeito de calcular o external_id (ex: cemaden_mctic
-    trocou de chave sintética "cidade|nome" pro código oficial da
-    estação; as antigas ficam órfãs, nunca mais recebem leitura).
-    Exige source + external_id_contains, os dois obrigatórios — nunca
-    apaga a fonte inteira sem esse segundo filtro.
+    bate com um filtro — usado pra limpar registros órfãos quando um
+    conector muda o jeito de calcular o external_id (ex: cemaden_mctic já
+    trocou duas vezes: chave sintética "cidade|nome" → código oficial
+    tipo "330580216A" → id numérico do CEMADEN nacional; a cada troca as
+    antigas ficam órfãs, nunca mais recebem leitura). Exige source +
+    (external_id_contains e/ou external_id_regex) — nunca apaga a fonte
+    inteira sem pelo menos um desses dois filtros.
 """
 
 from __future__ import annotations
@@ -91,13 +92,23 @@ class AdminOpsView(APIView):
 
                 source = (request.data or {}).get("source")
                 contains = (request.data or {}).get("external_id_contains")
-                if not source or not contains:
+                regex = (request.data or {}).get("external_id_regex")
+                if not source or not (contains or regex):
                     return Response(
-                        {"detail": "delete_stations exige 'source' e 'external_id_contains'."}, status=400
+                        {
+                            "detail": (
+                                "delete_stations exige 'source' e pelo menos um de "
+                                "'external_id_contains' / 'external_id_regex'."
+                            )
+                        },
+                        status=400,
                     )
-                apagadas, _ = Station.objects.filter(
-                    source__slug=source, external_id__contains=contains
-                ).delete()
+                qs = Station.objects.filter(source__slug=source)
+                if contains:
+                    qs = qs.filter(external_id__contains=contains)
+                if regex:
+                    qs = qs.filter(external_id__iregex=regex)
+                apagadas, _ = qs.delete()
                 saida.write(f"objetos apagados (estação + leituras em cascata): {apagadas}")
         except Exception as exc:  # noqa: BLE001
             logger.exception("Falha ao executar ação administrativa %r", action)
