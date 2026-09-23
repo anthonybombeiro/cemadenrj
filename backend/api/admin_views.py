@@ -27,6 +27,13 @@ Deliberadamente uma lista BRANCA fixa de ações (nunca comando arbitrário):
     antigas ficam órfãs, nunca mais recebem leitura). Exige source +
     (external_id_contains e/ou external_id_regex) — nunca apaga a fonte
     inteira sem pelo menos um desses dois filtros.
+  - "purge_readings": apaga leituras de UM tipo de UMA fonte a partir de
+    um timestamp (ISO) — usado pra migração quando o SIGNIFICADO de um
+    valor já armazenado muda (ex: 2026-09-23, Wunderground/Plugfield
+    passaram de "total corrido do dia" pra "balde por intervalo" — as
+    leituras de HOJE gravadas antes da mudança ficam contaminando a soma
+    como se fossem baldes, gerando acumulado absurdo). Exige source +
+    reading_type + since (formato "YYYY-MM-DDTHH:MM:SS", sempre UTC).
 """
 
 from __future__ import annotations
@@ -43,7 +50,15 @@ from rest_framework.views import APIView
 
 logger = logging.getLogger("ingestion")
 
-ACOES_PERMITIDAS = {"migrate", "collectstatic", "ingest", "sync_risk_alerts", "sync_sirenes", "delete_stations"}
+ACOES_PERMITIDAS = {
+    "migrate",
+    "collectstatic",
+    "ingest",
+    "sync_risk_alerts",
+    "sync_sirenes",
+    "delete_stations",
+    "purge_readings",
+}
 
 
 class AdminOpsView(APIView):
@@ -139,6 +154,27 @@ class AdminOpsView(APIView):
                 ids_para_apagar = [pk for pk, external_id in candidatos if _bate(external_id)]
                 apagadas, _ = Station.objects.filter(pk__in=ids_para_apagar).delete()
                 saida.write(f"objetos apagados (estação + leituras em cascata): {apagadas}")
+            elif action == "purge_readings":
+                import datetime as dt_module
+
+                from core.models import Reading
+
+                source = (request.data or {}).get("source")
+                reading_type = (request.data or {}).get("reading_type")
+                since_str = (request.data or {}).get("since")
+                if not source or not reading_type or not since_str:
+                    return Response(
+                        {"detail": "purge_readings exige 'source', 'reading_type' e 'since' (ISO, UTC)."},
+                        status=400,
+                    )
+                try:
+                    since = dt_module.datetime.fromisoformat(since_str).replace(tzinfo=dt_module.timezone.utc)
+                except ValueError:
+                    return Response({"detail": f"'since' inválido: {since_str!r}"}, status=400)
+                apagadas, _ = Reading.objects.filter(
+                    station__source__slug=source, reading_type=reading_type, timestamp__gte=since
+                ).delete()
+                saida.write(f"leituras apagadas: {apagadas}")
         except Exception as exc:  # noqa: BLE001
             logger.exception("Falha ao executar ação administrativa %r", action)
             return Response({"detail": f"Erro: {exc}", "saida": saida.getvalue()}, status=500)
