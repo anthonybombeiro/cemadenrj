@@ -173,4 +173,7 @@ export const SOURCE_LABELS: Record<string, string> = {
   wunderground: "Wunderground",
   plugfield: "Plugfield",
   rio_chuva_bairro: "Chuva por Bairro (Rio)",
+  cemaden_rj: "CEMADEN-RJ (rede própria)",
+  cemaden_mctic: "CEMADEN Nacional/MCTIC",
+  niteroi: "Niterói (Defesa Civil)",
 };

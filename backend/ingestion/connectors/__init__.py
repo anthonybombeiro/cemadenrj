@@ -1,7 +1,9 @@
 from .alerta_rio import AlertaRioConnector
 from .base import BaseConnector, IngestResult
 from .cemaden_nacional import CemadenNacionalConnector
+from .cemaden_rj_pluviometros import CemadenMcticConnector, CemadenRJConnector
 from .inmet import InmetConnector
+from .niteroi import NiteroiConnector
 from .plugfield import PlugfieldConnector
 from .rio_chuva_bairro import RioChuvaBairroConnector
 from .wunderground import WundergroundConnector
@@ -13,6 +15,9 @@ REGISTRY: dict[str, type[BaseConnector]] = {
     WundergroundConnector.slug: WundergroundConnector,
     RioChuvaBairroConnector.slug: RioChuvaBairroConnector,
     PlugfieldConnector.slug: PlugfieldConnector,
+    CemadenRJConnector.slug: CemadenRJConnector,
+    CemadenMcticConnector.slug: CemadenMcticConnector,
+    NiteroiConnector.slug: NiteroiConnector,
 }
 
 

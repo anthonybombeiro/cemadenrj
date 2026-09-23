@@ -24,7 +24,15 @@ from .serializers import (
 #   - "running_daily": o valor é um total corrido desde a meia-noite local
 #     (ex: Wunderground precipTotal, Plugfield rainDay). Somar leituras
 #     dobraria a contagem — o valor mais recente já É o acumulado do dia.
-PRECIPITACAO_BUCKET_SOURCES = {"alerta_rio", "cemaden_nacional", "inmet", "rio_chuva_bairro"}
+PRECIPITACAO_BUCKET_SOURCES = {
+    "alerta_rio",
+    "cemaden_nacional",
+    "inmet",
+    "rio_chuva_bairro",
+    "cemaden_rj",
+    "cemaden_mctic",
+    "niteroi",
+}
 PRECIPITACAO_RUNNING_DAILY_SOURCES = {"wunderground", "plugfield"}
 
 

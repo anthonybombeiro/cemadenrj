@@ -158,6 +158,11 @@ PLUGFIELD_PASSWORD = os.environ.get("PLUGFIELD_PASSWORD", "")
 # descobrir/enumerar a rede. Ver docs/fontes-de-dados.md.
 WUNDERGROUND_API_KEY = os.environ.get("WUNDERGROUND_API_KEY", "")
 
+# Conta institucional (Defesa Civil de Niterói) na API Alerta Nit/Tecal —
+# fornecida pelo diretor do CEMADEN-RJ. Ver ingestion/connectors/niteroi.py.
+NITEROI_API_USERNAME = os.environ.get("NITEROI_API_USERNAME", "")
+NITEROI_API_PASSWORD = os.environ.get("NITEROI_API_PASSWORD", "")
+
 INMET_API_TOKEN = os.environ.get("INMET_API_TOKEN", "")
 
 # Solução temporária enquanto não há token da API: faz scraping da tabela
