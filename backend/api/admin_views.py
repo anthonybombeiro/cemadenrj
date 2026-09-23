@@ -86,6 +86,8 @@ class AdminOpsView(APIView):
                     )
                 resultado = get_connector(source).run()
                 saida.write(resultado.summary())
+                for erro in resultado.errors:
+                    saida.write(f"\n  - {erro}")
             elif action == "sync_risk_alerts":
                 from ingestion.connectors import cemaden_rj_alertas
 

@@ -219,6 +219,7 @@ export const SOURCE_LABELS: Record<string, string> = {
   cemaden_mctic: "CEMADEN Nacional/MCTIC",
   niteroi: "Niterói (Defesa Civil)",
   cemaden_rj_sirenes: "CEMADEN-RJ — Sirenes/Alarme",
+  inea: "INEA — Alerta de Cheias",
 };
 
 /** Uma cor fixa por fonte, pra dar pra distinguir de relance numa tabela
@@ -236,9 +237,10 @@ export const SOURCE_COLORS: Record<string, string> = {
   cemaden_nacional: "#6c757d", // conector antigo/morto — cinza neutro
   alerta_rio: "#A91D3A", // emprestado da cor do CODESAL (Salvador) lá
   wunderground: "#FF6500", // emprestado da cor do SJC lá
-  plugfield: "#007261", // emprestado da cor do INEA lá
+  plugfield: "#033600", // emprestado da cor da ANA lá (INEA foi liberado pra fonte real abaixo)
   rio_chuva_bairro: "#543C18", // conector morto (503) — emprestado do PCJ
   niteroi: "#F712D4", // emprestado da cor do SIMEPAR lá
+  inea: "#007261", // = INEA na Rede Salvar — cor real, não emprestada (agora existe de verdade)
   // Vermelho vivo (mesmo tom do "muito alto" em getChuva24hNivel) — não
   // reaproveitado da Rede Salvar dessa vez, de propósito: aqui o vermelho
   // já é usado consistentemente no resto do painel pra "emergência/perigo".
