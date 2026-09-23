@@ -10,9 +10,12 @@ import RiscosOverviewPanel from "@/components/RiscosOverviewPanel";
 import {
   AlertEvent,
   fetchActiveAlertEvents,
+  fetchMunicipioRedecMap,
   fetchPrecipitacao,
   fetchStations,
+  normalizeMunicipioName,
   PrecipitacaoStation,
+  REDECS,
   SOURCE_LABELS,
   STATION_TYPE_LABELS,
   Station,
@@ -42,7 +45,27 @@ export default function HomePage() {
   const [municipalityFilter, setMunicipalityFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
   const [sourceFilter, setSourceFilter] = useState("");
+  const [redecFilter, setRedecFilter] = useState("");
   const [viewMode, setViewMode] = useState<ViewMode>("mapa");
+
+  // Município → REDEC — hoje só existia do lado dos alertas (AlertsPanel);
+  // busca 1x aqui e reusa pra agregar/filtrar Precipitação e Dados
+  // Meteorológicos por REDEC também (pedido do usuário).
+  const [municipioRedecMap, setMunicipioRedecMap] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let cancelled = false;
+    fetchMunicipioRedecMap()
+      .then((mapa) => {
+        if (!cancelled) setMunicipioRedecMap(mapa);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const redecOf = (municipality: string): string =>
+    municipioRedecMap[normalizeMunicipioName(municipality)] ?? "";
 
   const [precipitacao, setPrecipitacao] = useState<PrecipitacaoStation[]>([]);
   const [precipitacaoLoading, setPrecipitacaoLoading] = useState(false);
@@ -134,9 +157,10 @@ export default function HomePage() {
         (s) =>
           (!municipalityFilter || s.municipality === municipalityFilter) &&
           (!typeFilter || s.station_type === typeFilter) &&
-          (!sourceFilter || s.source === sourceFilter),
+          (!sourceFilter || s.source === sourceFilter) &&
+          (!redecFilter || redecOf(s.municipality) === redecFilter),
       ),
-    [stations, municipalityFilter, typeFilter, sourceFilter],
+    [stations, municipalityFilter, typeFilter, sourceFilter, redecFilter, municipioRedecMap],
   );
 
   const filteredPrecipitacao = useMemo(
@@ -145,9 +169,10 @@ export default function HomePage() {
         (s) =>
           (!municipalityFilter || s.municipality === municipalityFilter) &&
           (!typeFilter || s.station_type === typeFilter) &&
-          (!sourceFilter || s.source === sourceFilter),
+          (!sourceFilter || s.source === sourceFilter) &&
+          (!redecFilter || redecOf(s.municipality) === redecFilter),
       ),
-    [precipitacao, municipalityFilter, typeFilter, sourceFilter],
+    [precipitacao, municipalityFilter, typeFilter, sourceFilter, redecFilter, municipioRedecMap],
   );
 
   const meteorologicalTypeSet = useMemo(() => new Set(METEOROLOGICAL_READING_TYPES), []);
@@ -244,6 +269,22 @@ export default function HomePage() {
               </select>
             </div>
 
+            <div className="flex-1 md:flex-none">
+              <label className="block text-xs font-medium text-gray-500">REDEC</label>
+              <select
+                className="mt-1 w-full rounded border border-gray-300 p-1.5 text-sm"
+                value={redecFilter}
+                onChange={(e) => setRedecFilter(e.target.value)}
+              >
+                <option value="">Todas</option>
+                {REDECS.map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <div className="w-full text-xs text-gray-500 md:mt-4">
               {viewMode === "precipitacao"
                 ? precipitacaoLoading
@@ -272,12 +313,15 @@ export default function HomePage() {
 
         <main className="relative flex-1 overflow-hidden">
           {viewMode === "mapa" && <MapView stations={filteredStations} activeAlertEvents={activeAlertEvents} />}
-          {viewMode === "precipitacao" && <PrecipitationTable stations={filteredPrecipitacao} />}
+          {viewMode === "precipitacao" && (
+            <PrecipitationTable stations={filteredPrecipitacao} municipioRedecMap={municipioRedecMap} />
+          )}
           {viewMode === "meteorologico" && (
             <DataTable
               stations={filteredStations}
               readingTypes={METEOROLOGICAL_READING_TYPES}
               defaultSortKey="temperatura_c"
+              municipioRedecMap={municipioRedecMap}
             />
           )}
           {viewMode === "alertas" && <AlertsPanel />}

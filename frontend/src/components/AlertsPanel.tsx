@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   fetchRiskAlerts,
@@ -46,9 +46,47 @@ function formatTimestamp(iso: string | null): string {
 }
 
 function RedecGrid({ alerts, municipioAlerts, tipo }: { alerts: RiskAlert[]; municipioAlerts: RiskAlert[]; tipo: RiskAlertTipo }) {
+  const temGranularidadeMunicipal = tipo === "geologico" || tipo === "hidrologico";
+
+  // BUG relatado pelo usuário: os cards por REDEC (boletim
+  // atualizacao_hidro.php/atualizacao_geo.php — um feed) às vezes não
+  // batiam com o mapa/tabela por município (atualizacao_municipio_*.php —
+  // OUTRO feed da própria Defesa Civil-RJ, atualizado de forma
+  // independente). Em vez de confiar cegamente no boletim por REDEC pro
+  // nível do card, usamos o MAIOR risco entre (boletim da REDEC, maior
+  // risco visto entre os municípios daquela REDEC) — nunca escondemos um
+  // risco maior que já apareça no nível de município, então card e
+  // mapa/tabela ficam consistentes por construção. Geológico tem
+  // cobertura completa dos 92 municípios (fonte confiável de sobra);
+  // hidrológico só lista município a partir de "Alto" (documentado em
+  // cemaden_rj_alertas.py) — por isso aqui só EMPURRAMOS pra cima, nunca
+  // pra baixo (ausência no feed municipal não significa risco zero).
+  const maiorRiscoMunicipalPorRedec = useMemo(() => {
+    const mapa = new Map<string, RiskLevel>();
+    if (!temGranularidadeMunicipal) return mapa;
+    for (const m of municipioAlerts) {
+      const atual = mapa.get(m.redec);
+      if (!atual || NIVEIS.indexOf(m.risco) > NIVEIS.indexOf(atual)) {
+        mapa.set(m.redec, m.risco);
+      }
+    }
+    return mapa;
+  }, [municipioAlerts, temGranularidadeMunicipal]);
+
+  const efetivo = useMemo(
+    () =>
+      alerts.map((a) => {
+        const maiorMunicipal = maiorRiscoMunicipalPorRedec.get(a.redec);
+        const risco =
+          maiorMunicipal && NIVEIS.indexOf(maiorMunicipal) > NIVEIS.indexOf(a.risco) ? maiorMunicipal : a.risco;
+        return { ...a, risco };
+      }),
+    [alerts, maiorRiscoMunicipalPorRedec],
+  );
+
   const sorted = useMemo(
-    () => [...alerts].sort((a, b) => NIVEIS.indexOf(b.risco) - NIVEIS.indexOf(a.risco) || a.redec.localeCompare(b.redec)),
-    [alerts],
+    () => [...efetivo].sort((a, b) => NIVEIS.indexOf(b.risco) - NIVEIS.indexOf(a.risco) || a.redec.localeCompare(b.redec)),
+    [efetivo],
   );
 
   const niveisDestaque = DESTAQUE_MUNICIPIO_A_PARTIR_DE[tipo];
@@ -207,37 +245,51 @@ export default function AlertsPanel() {
   // confirmado ao vivo pros dois); meteorológico/incêndio só têm por REDEC.
   const temGranularidadeMunicipal = tipo === "geologico" || tipo === "hidrologico";
 
-  useEffect(() => {
-    let cancelled = false;
+  const [atualizandoManual, setAtualizandoManual] = useState(false);
+  // Evita setState depois que o componente desmontou (ex: trocou de aba no
+  // meio de uma busca) — checado dentro de carregar(), não no efeito, pra
+  // funcionar igual tanto na busca automática quanto na manual (botão).
+  const desmontadoRef = useRef(false);
+  useEffect(() => () => {
+    desmontadoRef.current = true;
+  }, []);
 
-    const carregar = (mostrarLoading: boolean) => {
+  // useCallback pra poder chamar isso tanto sozinho (efeito abaixo) quanto
+  // sob demanda (botão "Atualizar agora") sem duplicar a lógica de busca.
+  const carregar = useCallback(
+    (mostrarLoading: boolean) => {
       if (mostrarLoading) setLoading(true);
       setError(null);
-      Promise.all([
+      return Promise.all([
         fetchRiskAlerts(tipo, "redec"),
         temGranularidadeMunicipal ? fetchRiskAlerts(tipo, "municipio") : Promise.resolve([]),
       ])
         .then(([redec, municipio]) => {
-          if (cancelled) return;
+          if (desmontadoRef.current) return;
           setRedecAlerts(redec);
           setMunicipioAlerts(municipio);
           setAtualizadoEm(new Date());
         })
         .catch((err) => {
-          if (!cancelled) setError(err instanceof Error ? err.message : "Erro desconhecido");
+          if (!desmontadoRef.current) setError(err instanceof Error ? err.message : "Erro desconhecido");
         })
         .finally(() => {
-          if (!cancelled && mostrarLoading) setLoading(false);
+          if (!desmontadoRef.current && mostrarLoading) setLoading(false);
         });
-    };
+    },
+    [tipo, temGranularidadeMunicipal],
+  );
 
+  useEffect(() => {
     carregar(true);
     const intervalo = setInterval(() => carregar(false), INTERVALO_ATUALIZACAO_MS);
-    return () => {
-      cancelled = true;
-      clearInterval(intervalo);
-    };
-  }, [tipo, temGranularidadeMunicipal]);
+    return () => clearInterval(intervalo);
+  }, [carregar]);
+
+  const atualizarAgora = () => {
+    setAtualizandoManual(true);
+    carregar(false).finally(() => setAtualizandoManual(false));
+  };
 
   return (
     <div className="h-full w-full overflow-auto bg-white p-4">
@@ -269,11 +321,22 @@ export default function AlertsPanel() {
             </span>
           ))}
         </div>
-        {atualizadoEm && (
-          <span title="A página busca de novo sozinha a cada 5 minutos">
-            Painel atualizado às {atualizadoEm.toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo" })}
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          {atualizadoEm && (
+            <span title="A página busca de novo sozinha a cada 5 minutos">
+              Painel atualizado às {atualizadoEm.toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo" })}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={atualizarAgora}
+            disabled={atualizandoManual}
+            className="rounded border border-gray-300 px-2 py-1 font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+            title="Buscar os alertas de novo agora, sem esperar os 5 minutos"
+          >
+            {atualizandoManual ? "Atualizando…" : "↻ Atualizar agora"}
+          </button>
+        </div>
       </div>
 
       {error && (

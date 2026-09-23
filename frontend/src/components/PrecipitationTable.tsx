@@ -2,7 +2,15 @@
 
 import { useMemo, useState } from "react";
 
-import { getChuva24hNivel, getDelayStatus, PrecipitacaoStation, SOURCE_COLORS, SOURCE_LABELS } from "@/lib/api";
+import {
+  getChuva1hFaixa,
+  getChuva24hNivel,
+  getDelayStatus,
+  normalizeMunicipioName,
+  PrecipitacaoStation,
+  SOURCE_COLORS,
+  SOURCE_LABELS,
+} from "@/lib/api";
 import { downloadCsv } from "@/lib/csvExport";
 
 function formatTimestamp(iso: string | null): string {
@@ -21,9 +29,17 @@ function formatMm(value: number | null): string {
 
 type SortKey = "name" | "municipality" | "source" | "hoje" | "updated";
 
-export default function PrecipitationTable({ stations }: { stations: PrecipitacaoStation[] }) {
+export default function PrecipitationTable({
+  stations,
+  municipioRedecMap = {},
+}: {
+  stations: PrecipitacaoStation[];
+  /** Município (normalizado) → REDEC — ver DataTable.tsx/page.tsx. */
+  municipioRedecMap?: Record<string, string>;
+}) {
   const [sortKey, setSortKey] = useState<SortKey>("hoje");
   const [sortAsc, setSortAsc] = useState(false);
+  const redecOf = (municipality: string) => municipioRedecMap[normalizeMunicipioName(municipality)] ?? "";
 
   const sorted = useMemo(() => {
     const copy = [...stations];
@@ -51,10 +67,22 @@ export default function PrecipitationTable({ stations }: { stations: Precipitaca
   const arrow = (key: SortKey) => (key === sortKey ? (sortAsc ? " ▲" : " ▼") : "");
 
   const exportar = () => {
-    const headers = ["Estação", "Município", "Fonte", "Agora (mm)", "Hoje (mm)", "1h (mm)", "24h (mm)", "96h (mm)", "Atualizado em"];
+    const headers = [
+      "Estação",
+      "Município",
+      "REDEC",
+      "Fonte",
+      "Agora (mm)",
+      "Hoje (mm)",
+      "1h (mm)",
+      "24h (mm)",
+      "96h (mm)",
+      "Atualizado em",
+    ];
     const rows = sorted.map((s) => [
       s.name,
       s.municipality || "",
+      redecOf(s.municipality),
       SOURCE_LABELS[s.source] ?? s.source,
       s.chuva_agora_mm ?? "",
       s.acumulado_hoje_mm ?? "",
@@ -77,26 +105,42 @@ export default function PrecipitationTable({ stations }: { stations: Precipitaca
           ⬇ Exportar CSV
         </button>
       </div>
-      <table className="min-w-full border-collapse text-sm">
-        <thead className="sticky top-9 bg-gray-100 text-left text-xs uppercase tracking-wide text-gray-600">
+      <div className="flex flex-wrap items-center gap-3 border-b border-gray-100 px-3 py-1.5 text-[11px] text-gray-500">
+        <span>Fundo da linha por chuva na última 1h (igual à legenda do CEMADEN-RJ):</span>
+        {[
+          { bg: "#BEBEBE", label: "Atrasada" },
+          { bg: "#63B8FF", label: "Fraca (0.2–5mm/h)" },
+          { bg: "#FFFF66", label: "Moderada (5.1–25mm/h)" },
+          { bg: "#FFA600", label: "Forte (25.1–50mm/h)" },
+          { bg: "#CC0000", label: "Muito Forte (>50mm/h)" },
+        ].map((f) => (
+          <span key={f.label} className="flex items-center gap-1">
+            <span className="inline-block h-3 w-3 rounded-sm border border-black/10" style={{ backgroundColor: f.bg }} />
+            {f.label}
+          </span>
+        ))}
+      </div>
+      <table className="min-w-full border-collapse text-sm table-fixed">
+        <thead className="sticky top-[4.5rem] bg-gray-100 text-left text-xs uppercase tracking-wide text-gray-600">
           <tr>
-            <th className="cursor-pointer select-none whitespace-nowrap px-3 py-2" onClick={() => toggleSort("name")}>
+            <th className="w-32 cursor-pointer select-none px-3 py-2" onClick={() => toggleSort("name")}>
               Estação{arrow("name")}
             </th>
-            <th className="cursor-pointer select-none whitespace-nowrap px-3 py-2" onClick={() => toggleSort("municipality")}>
+            <th className="w-28 cursor-pointer select-none px-3 py-2" onClick={() => toggleSort("municipality")}>
               Município{arrow("municipality")}
             </th>
-            <th className="cursor-pointer select-none whitespace-nowrap px-3 py-2" onClick={() => toggleSort("source")}>
+            <th className="w-24 whitespace-nowrap px-3 py-2">REDEC</th>
+            <th className="w-24 cursor-pointer select-none px-3 py-2" onClick={() => toggleSort("source")}>
               Fonte{arrow("source")}
             </th>
-            <th className="whitespace-nowrap px-3 py-2">Agora</th>
-            <th className="cursor-pointer select-none whitespace-nowrap px-3 py-2" onClick={() => toggleSort("hoje")}>
+            <th className="w-20 whitespace-nowrap px-3 py-2">Agora</th>
+            <th className="w-20 cursor-pointer select-none px-3 py-2" onClick={() => toggleSort("hoje")}>
               Hoje{arrow("hoje")}
             </th>
-            <th className="whitespace-nowrap px-3 py-2">1h</th>
-            <th className="whitespace-nowrap px-3 py-2">24h</th>
-            <th className="whitespace-nowrap px-3 py-2">96h</th>
-            <th className="cursor-pointer select-none whitespace-nowrap px-3 py-2" onClick={() => toggleSort("updated")}>
+            <th className="w-16 whitespace-nowrap px-3 py-2">1h</th>
+            <th className="w-16 whitespace-nowrap px-3 py-2">24h</th>
+            <th className="w-16 whitespace-nowrap px-3 py-2">96h</th>
+            <th className="w-24 cursor-pointer select-none px-3 py-2" onClick={() => toggleSort("updated")}>
               Atualizado em{arrow("updated")}
             </th>
           </tr>
@@ -107,19 +151,41 @@ export default function PrecipitationTable({ stations }: { stations: Precipitaca
             // Nível de chuva em 24h — se a fonte só tem "hoje" (total corrido
             // do dia, ver rodapé), usa esse como aproximação do nível.
             const nivel = getChuva24hNivel(s.acumulado_24h_mm ?? s.acumulado_hoje_mm);
+            // Fundo da linha inteira pela chuva na última 1h — mesma
+            // legenda exata do portal de sirenes do CEMADEN-RJ (ver
+            // getChuva1hFaixa). "Atrasada" usa o mesmo corte de >1h sem
+            // atualizar que já usamos pra colorir a coluna "Atualizado em".
+            const faixa1h = getChuva1hFaixa(s.acumulado_1h_mm, atraso.atrasado);
             return (
-              <tr key={`${s.source}-${s.id}`} className="border-b border-gray-100 hover:bg-gray-50">
-                <td className="whitespace-nowrap px-3 py-1.5 font-medium text-gray-900">{s.name}</td>
-                <td className="whitespace-nowrap px-3 py-1.5 text-gray-600">{s.municipality || "—"}</td>
+              <tr
+                key={`${s.source}-${s.id}`}
+                className="border-b border-gray-100"
+                style={faixa1h ? { backgroundColor: faixa1h.bg } : undefined}
+                title={faixa1h?.label}
+              >
                 <td
-                  className="whitespace-nowrap px-3 py-1.5 font-semibold"
-                  style={{ color: SOURCE_COLORS[s.source] ?? "#374151" }}
+                  className="break-words px-3 py-1.5 font-medium"
+                  style={{ color: faixa1h?.text ?? "#111827" }}
+                >
+                  {s.name}
+                </td>
+                <td className="break-words px-3 py-1.5" style={{ color: faixa1h?.text ?? "#4b5563" }}>
+                  {s.municipality || "—"}
+                </td>
+                <td className="break-words px-3 py-1.5" style={{ color: faixa1h?.text ?? "#6b7280" }}>
+                  {redecOf(s.municipality) || "—"}
+                </td>
+                <td
+                  className="break-words px-3 py-1.5 font-semibold"
+                  style={{ color: faixa1h ? faixa1h.text : (SOURCE_COLORS[s.source] ?? "#374151") }}
                   title={s.source}
                 >
                   {SOURCE_LABELS[s.source] ?? s.source}
                 </td>
-                <td className="whitespace-nowrap px-3 py-1.5 text-gray-800">{formatMm(s.chuva_agora_mm)}</td>
-                <td className="whitespace-nowrap px-3 py-1.5 font-medium text-gray-900">
+                <td className="break-words px-3 py-1.5" style={{ color: faixa1h?.text ?? "#1f2937" }}>
+                  {formatMm(s.chuva_agora_mm)}
+                </td>
+                <td className="break-words px-3 py-1.5 font-medium" style={{ color: faixa1h?.text ?? "#111827" }}>
                   <span className="inline-flex items-center gap-1.5">
                     {nivel && (
                       <span
@@ -131,10 +197,16 @@ export default function PrecipitationTable({ stations }: { stations: Precipitaca
                     {formatMm(s.acumulado_hoje_mm)}
                   </span>
                 </td>
-                <td className="whitespace-nowrap px-3 py-1.5 text-gray-800">{formatMm(s.acumulado_1h_mm)}</td>
-                <td className="whitespace-nowrap px-3 py-1.5 text-gray-800">{formatMm(s.acumulado_24h_mm)}</td>
-                <td className="whitespace-nowrap px-3 py-1.5 text-gray-800">{formatMm(s.acumulado_96h_mm)}</td>
-                <td className="whitespace-nowrap px-3 py-1.5" style={{ color: atraso.color }} title={atraso.label}>
+                <td className="break-words px-3 py-1.5" style={{ color: faixa1h?.text ?? "#1f2937" }}>
+                  {formatMm(s.acumulado_1h_mm)}
+                </td>
+                <td className="break-words px-3 py-1.5" style={{ color: faixa1h?.text ?? "#1f2937" }}>
+                  {formatMm(s.acumulado_24h_mm)}
+                </td>
+                <td className="break-words px-3 py-1.5" style={{ color: faixa1h?.text ?? "#1f2937" }}>
+                  {formatMm(s.acumulado_96h_mm)}
+                </td>
+                <td className="break-words px-3 py-1.5" style={{ color: faixa1h ? faixa1h.text : atraso.color }} title={atraso.label}>
                   {formatTimestamp(s.updated_at)}
                 </td>
               </tr>

@@ -2,7 +2,15 @@
 
 import { useMemo, useState } from "react";
 
-import { getDelayStatus, READING_TYPE_LABELS, SOURCE_COLORS, SOURCE_LABELS, STATION_TYPE_LABELS, Station } from "@/lib/api";
+import {
+  getDelayStatus,
+  normalizeMunicipioName,
+  READING_TYPE_LABELS,
+  SOURCE_COLORS,
+  SOURCE_LABELS,
+  STATION_TYPE_LABELS,
+  Station,
+} from "@/lib/api";
 import { downloadCsv } from "@/lib/csvExport";
 
 const COLUMN_ORDER = [
@@ -52,6 +60,7 @@ export default function DataTable({
   stations,
   readingTypes,
   defaultSortKey = "municipality",
+  municipioRedecMap = {},
 }: {
   stations: Station[];
   /** Restringe colunas e estações exibidas a esses tipos de leitura (default: todos). */
@@ -60,7 +69,11 @@ export default function DataTable({
    * ou um tipo de leitura (ex: "temperatura_c"). Colunas de valor começam
    * ordenadas do maior pro menor; as demais, A→Z. */
   defaultSortKey?: string;
+  /** Município (normalizado) → REDEC — pra mostrar/exportar a coluna REDEC.
+   * Sem isso a coluna fica em branco, não quebra nada (ver page.tsx). */
+  municipioRedecMap?: Record<string, string>;
 }) {
+  const redecOf = (municipality: string) => municipioRedecMap[normalizeMunicipioName(municipality)] ?? "";
   const [sortKey, setSortKey] = useState<string>(defaultSortKey);
   const [sortAsc, setSortAsc] = useState(!FIXED_SORT_KEYS.has(defaultSortKey) ? false : true);
 
@@ -121,6 +134,7 @@ export default function DataTable({
     const headers = [
       "Estação",
       "Município",
+      "REDEC",
       "Fonte",
       "Tipo",
       ...columns.map((c) => READING_TYPE_LABELS[c] ?? c),
@@ -132,6 +146,7 @@ export default function DataTable({
       return [
         s.name,
         s.municipality || "",
+        redecOf(s.municipality),
         SOURCE_LABELS[s.source] ?? s.source,
         STATION_TYPE_LABELS[s.station_type] ?? s.station_type,
         ...columns.map((c) => (readingsByType[c] ? formatReadingValue(c, readingsByType[c].value) : "")),
@@ -152,30 +167,37 @@ export default function DataTable({
           ⬇ Exportar CSV
         </button>
       </div>
-      <table className="min-w-full border-collapse text-sm">
+      <table className="min-w-full border-collapse text-sm table-fixed">
         <thead className="sticky top-9 bg-gray-100 text-left text-xs uppercase tracking-wide text-gray-600">
           <tr>
-            <th className="cursor-pointer select-none whitespace-nowrap px-3 py-2" onClick={() => toggleSort("name")}>
+            <th
+              className="w-32 cursor-pointer select-none px-3 py-2"
+              onClick={() => toggleSort("name")}
+            >
               Estação{arrow("name")}
             </th>
-            <th className="cursor-pointer select-none whitespace-nowrap px-3 py-2" onClick={() => toggleSort("municipality")}>
+            <th
+              className="w-28 cursor-pointer select-none px-3 py-2"
+              onClick={() => toggleSort("municipality")}
+            >
               Município{arrow("municipality")}
             </th>
-            <th className="cursor-pointer select-none whitespace-nowrap px-3 py-2" onClick={() => toggleSort("source")}>
+            <th className="w-24 whitespace-nowrap px-3 py-2">REDEC</th>
+            <th className="w-24 cursor-pointer select-none px-3 py-2" onClick={() => toggleSort("source")}>
               Fonte{arrow("source")}
             </th>
-            <th className="whitespace-nowrap px-3 py-2">Tipo</th>
+            <th className="w-24 whitespace-nowrap px-3 py-2">Tipo</th>
             {columns.map((c) => (
               <th
                 key={c}
-                className="cursor-pointer select-none whitespace-nowrap px-3 py-2"
+                className="w-20 cursor-pointer select-none px-3 py-2"
                 onClick={() => toggleSort(c)}
               >
                 {READING_TYPE_LABELS[c] ?? c}
                 {arrow(c)}
               </th>
             ))}
-            <th className="cursor-pointer select-none whitespace-nowrap px-3 py-2" onClick={() => toggleSort("updated")}>
+            <th className="w-24 cursor-pointer select-none px-3 py-2" onClick={() => toggleSort("updated")}>
               Atualizado em{arrow("updated")}
             </th>
           </tr>
@@ -187,25 +209,26 @@ export default function DataTable({
             const atraso = getDelayStatus(updated);
             return (
               <tr key={`${s.source}-${s.id}`} className="border-b border-gray-100 hover:bg-gray-50">
-                <td className="whitespace-nowrap px-3 py-1.5 font-medium text-gray-900">{s.name}</td>
-                <td className="whitespace-nowrap px-3 py-1.5 text-gray-600">{s.municipality || "—"}</td>
+                <td className="break-words px-3 py-1.5 font-medium text-gray-900">{s.name}</td>
+                <td className="break-words px-3 py-1.5 text-gray-600">{s.municipality || "—"}</td>
+                <td className="break-words px-3 py-1.5 text-gray-500">{redecOf(s.municipality) || "—"}</td>
                 <td
-                  className="whitespace-nowrap px-3 py-1.5 font-semibold"
+                  className="break-words px-3 py-1.5 font-semibold"
                   style={{ color: SOURCE_COLORS[s.source] ?? "#374151" }}
                   title={s.source}
                 >
                   {SOURCE_LABELS[s.source] ?? s.source}
                 </td>
-                <td className="whitespace-nowrap px-3 py-1.5 text-gray-600">
+                <td className="break-words px-3 py-1.5 text-gray-600">
                   {STATION_TYPE_LABELS[s.station_type] ?? s.station_type}
                 </td>
                 {columns.map((c) => (
-                  <td key={c} className="whitespace-nowrap px-3 py-1.5 text-gray-800">
+                  <td key={c} className="break-words px-3 py-1.5 text-gray-800">
                     {readingsByType[c] ? formatReadingValue(c, readingsByType[c].value) : "—"}
                   </td>
                 ))}
                 <td
-                  className="whitespace-nowrap px-3 py-1.5"
+                  className="break-words px-3 py-1.5"
                   style={{ color: atraso.color }}
                   title={atraso.label}
                 >

@@ -249,13 +249,13 @@ export const SOURCE_COLORS: Record<string, string> = {
  * ideia da coluna "Data" da Rede Salvar, mas com limiares adaptados: as
  * fontes de lá misturam redes hidrológicas de cadência bem mais lenta
  * (horas), enquanto as nossas atualizam tipicamente a cada 15min–1h. */
-export function getDelayStatus(iso: string | null): { color: string; label: string } {
-  if (!iso) return { color: "#9ca3af", label: "sem leitura" };
+export function getDelayStatus(iso: string | null): { color: string; label: string; atrasado: boolean } {
+  if (!iso) return { color: "#9ca3af", label: "sem leitura", atrasado: true };
   const horas = (Date.now() - new Date(iso).getTime()) / 3_600_000;
-  if (horas < 1) return { color: "#111827", label: "em dia" };
-  if (horas < 6) return { color: "#b45309", label: "atenção (1h–6h sem atualizar)" };
-  if (horas < 24) return { color: "#c2410c", label: "atrasado (6h–24h sem atualizar)" };
-  return { color: "#991b1b", label: "muito atrasado (> 24h sem atualizar)" };
+  if (horas < 1) return { color: "#111827", label: "em dia", atrasado: false };
+  if (horas < 6) return { color: "#b45309", label: "atenção (1h–6h sem atualizar)", atrasado: true };
+  if (horas < 24) return { color: "#c2410c", label: "atrasado (6h–24h sem atualizar)", atrasado: true };
+  return { color: "#991b1b", label: "muito atrasado (> 24h sem atualizar)", atrasado: true };
 }
 
 /** Faixas de chuva acumulada em 24h — os mesmos 3 cortes (10/30/70mm) usados
@@ -267,4 +267,52 @@ export function getChuva24hNivel(mm: number | null): { color: string; label: str
   if (mm >= 30) return { color: "#f97316", label: "30–70mm em 24h" };
   if (mm >= 10) return { color: "#eab308", label: "10–30mm em 24h" };
   return null;
+}
+
+/** Cor de FUNDO DA LINHA pela chuva na última 1 hora — exatamente a mesma
+ * legenda/cores do portal de sirenes do CEMADEN-RJ
+ * (ConsultaPluviometros?cmd=dadosPluviometros&redec=Todos&municipio=Todos),
+ * lida direto do HTML deles: "Atrasada"=#BEBEBE,
+ * "Fraca" 0.2–5mm/h=#63B8FF, "Moderada" 5.1–25mm/h=#FFFF66,
+ * "Forte" 25.1–50mm/h=#FFA600, "Muito Forte" >50mm/h=#CC0000. Sem chuva
+ * significativa (< 0.2mm/h) e sem atraso: sem cor (fundo branco normal,
+ * igual o comportamento deles). */
+export function getChuva1hFaixa(
+  mm: number | null,
+  atrasado: boolean,
+): { bg: string; text: string; label: string } | null {
+  if (atrasado) return { bg: "#BEBEBE", text: "#1f2937", label: "Atrasada" };
+  if (mm == null) return null;
+  if (mm > 50) return { bg: "#CC0000", text: "#ffffff", label: "Muito Forte (acima de 50mm/h)" };
+  if (mm >= 25.1) return { bg: "#FFA600", text: "#1f2937", label: "Forte (entre 25.1mm e 50mm/h)" };
+  if (mm >= 5.1) return { bg: "#FFFF66", text: "#1f2937", label: "Moderada (entre 5.1mm e 25mm/h)" };
+  if (mm >= 0.2) return { bg: "#63B8FF", text: "#1f2937", label: "Fraca (entre 0.2mm e 5mm/h)" };
+  return null;
+}
+
+/** As 11 REDECs (Regionais de Defesa Civil) do estado do RJ — mesma lista
+ * usada no backend (ingestion/connectors/cemaden_rj_alertas.py). */
+export const REDECS = [
+  "BAIXADA FLUMINENSE",
+  "BAIXADA LITORÂNEA",
+  "CAPITAL",
+  "COSTA VERDE",
+  "METROPOLITANA",
+  "NORTE",
+  "NOROESTE",
+  "SERRANA I",
+  "SERRANA II",
+  "SUL I",
+  "SUL II",
+] as const;
+
+/** Município → REDEC, montado a partir do endpoint de risco geológico por
+ * município (o único que sempre traz os 92 municípios — ver AlertsPanel).
+ * Usado pra agregar/filtrar as tabelas de Precipitação e Dados
+ * Meteorológicos por REDEC, que hoje só existe nos alertas. */
+export async function fetchMunicipioRedecMap(): Promise<Record<string, string>> {
+  const data = await fetchRiskAlerts("geologico", "municipio");
+  const mapa: Record<string, string> = {};
+  for (const a of data) mapa[normalizeMunicipioName(a.municipio)] = a.redec;
+  return mapa;
 }
