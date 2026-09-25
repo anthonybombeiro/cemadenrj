@@ -1,32 +1,67 @@
-name: Raspar INMET e enviar para o backend
+name: Raspar INMET (RESERVA) e enviar para o backend
 
-# Roda um Chrome de verdade (grátis em runner de repositório público) para
-# ler a tabela pública do INMET, já que o HostGator (hospedagem
-# compartilhada, sem root) não consegue instalar Chrome. Ver
-# backend/docs/fontes-de-dados.md para o contexto completo.
+# RESERVA da coleta do INMET. O método primário desde 2026-09-25 é a API
+# oficial com token (ingestão no próprio servidor, ver
+# backend/ingestion/connectors/inmet.py). Este workflow NÃO deve raspar
+# enquanto a API estiver saudável: a cada 15 min ele só consulta
+# /api/ingest/status/ e, se os dados do INMET estiverem defasados (última
+# leitura há mais de 3h, ou menos da metade das estações reportando), roda o
+# scraping com Chrome real. Se a consulta de saúde falhar, assume defasado
+# (é melhor raspar à toa do que ficar sem dado). O código do scraper foi
+# mantido em backend/scripts/scrape_inmet_and_push.py.
 
 on:
   schedule:
     - cron: "*/15 * * * *"
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      forcar:
+        description: "Raspar mesmo com a API saudável"
+        type: boolean
+        default: false
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
     steps:
+      - name: Verificar se a API do INMET está defasada
+        id: saude
+        env:
+          INGEST_URL: ${{ secrets.INGEST_URL }}
+          INGEST_SHARED_SECRET: ${{ secrets.INGEST_SHARED_SECRET }}
+          FORCAR: ${{ inputs.forcar }}
+        run: |
+          if [ "$FORCAR" = "true" ]; then
+            echo "Execução forçada."; echo "raspar=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          STATUS_URL=$(echo "$INGEST_URL" | sed -E 's#readings/?$#status/?source=inmet#')
+          RESP=$(curl -s -m 30 -w "\n%{http_code}" -H "X-Ingest-Secret: $INGEST_SHARED_SECRET" "$STATUS_URL" || true)
+          CODE=$(echo "$RESP" | tail -n1); BODY=$(echo "$RESP" | sed '$d')
+          echo "HTTP $CODE: $BODY"
+          if [ "$CODE" = "200" ] && echo "$BODY" | grep -q '"stale": *false'; then
+            echo "API do INMET saudável — sem scraping."; echo "raspar=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Dados defasados ou saúde indisponível — acionando a reserva."; echo "raspar=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/checkout@v4
+        if: steps.saude.outputs.raspar == 'true'
 
       - uses: actions/setup-python@v5
+        if: steps.saude.outputs.raspar == 'true'
         with:
           python-version: "3.12"
 
       - name: Instalar Chrome
+        if: steps.saude.outputs.raspar == 'true'
         uses: browser-actions/setup-chrome@v1
 
       - name: Instalar dependências
+        if: steps.saude.outputs.raspar == 'true'
         run: pip install requests selenium pandas lxml
 
       - name: Rodar scraper e enviar leituras
+        if: steps.saude.outputs.raspar == 'true'
         env:
           INGEST_URL: ${{ secrets.INGEST_URL }}
           INGEST_SHARED_SECRET: ${{ secrets.INGEST_SHARED_SECRET }}
